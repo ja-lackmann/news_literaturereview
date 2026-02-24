@@ -547,6 +547,8 @@
     <div id="toolbar">
         <button class="btn primary" id="add-node-btn">＋ Node</button>
         <button class="btn" id="add-edge-btn">＋ Edge</button>
+        <button class="btn danger" id="reset-graph-btn" title="Remove all custom nodes and edges">&#x2715; Reset Custom
+            Nodes</button>
     </div>
 
     <!-- ── USER BAR ────────────────────────────── -->
@@ -1232,6 +1234,12 @@
             customEdges.push({ source: connectTo, target: id });
             localStorage.setItem("customEdges", JSON.stringify(customEdges));
 
+            // Calculate relative position (Suggestion 2)
+            const parentPos = getPos(connectTo);
+            const newX = parentPos.x + 150;
+            const newY = parentPos.y + (Math.random() * 100 - 50); // +/- 50px jitter
+            savePos(id, newX, newY);
+
             document.getElementById("new-node-name").value = "";
             closePanels();
             renderGraph();
@@ -1266,6 +1274,58 @@
                 })
                 .attr("stroke-width", 2.5);
         }
+
+        // ── RESET CUSTOM NODES
+        document.getElementById("reset-graph-btn").addEventListener("click", () => {
+            if (!confirm("Remove unused custom nodes and edges? Anything with a paper attached will be kept.")) return;
+
+            // Collect all node IDs and edge keys that have at least one paper in the sheet
+            const paperNodeIds = new Set();
+            const paperEdgeKeys = new Set();
+            papers.forEach(p => {
+                if (p.startNode) paperNodeIds.add(p.startNode);
+                if (p.endNode) paperNodeIds.add(p.endNode);
+                if (p.startNode && p.endNode) paperEdgeKeys.add(edgeKey(p.startNode, p.endNode));
+            });
+
+            // Fixed node IDs (always kept regardless)
+            const fixedIds = new Set(FIXED_NODES.map(n => n.id));
+
+            // Keep custom nodes that have papers; remove ones that don't
+            const removedNodeIds = new Set();
+            customNodes = customNodes.filter(n => {
+                if (paperNodeIds.has(n.id)) return true; // has a paper → keep
+                removedNodeIds.add(n.id);
+                return false;
+            });
+
+            // Keep custom edges that have papers; remove ones that don't
+            customEdges = customEdges.filter(e => {
+                return paperEdgeKeys.has(edgeKey(e.source, e.target));
+            });
+
+            // Remove positions only for nodes actually being deleted
+            removedNodeIds.forEach(id => delete nodePositions[id]);
+
+            // Persist
+            localStorage.setItem("customNodes", JSON.stringify(customNodes));
+            localStorage.setItem("customEdges", JSON.stringify(customEdges));
+            localStorage.setItem("nodePositions", JSON.stringify(nodePositions));
+
+            // Re-render
+            nodeLayer.selectAll("*").remove();
+            edgeLayer.selectAll("*").remove();
+            labelLayer.selectAll("*").remove();
+            renderGraph();
+
+            const kept = paperNodeIds.size - fixedIds.size > 0
+                ? ` (${[...paperNodeIds].filter(id => !fixedIds.has(id)).length} node(s) with papers kept)`
+                : "";
+            const removed = removedNodeIds.size;
+            showStatus(removed > 0
+                ? `Removed ${removed} unused node(s)${kept} ✓`
+                : `Nothing to remove — all custom nodes have papers attached`);
+        });
 
         function closePanels() {
             document.getElementById("add-node-panel").classList.remove("open");
