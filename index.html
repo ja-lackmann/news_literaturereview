@@ -1,0 +1,1353 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Media–Politics Literature Review</title>
+
+    <!-- ── Google Fonts ── -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet" />
+
+    <!-- ── Libraries ── -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        /* ══════════════════════════════════
+       RESET & BASE
+    ══════════════════════════════════ */
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --surface2: #21262d;
+            --border: #30363d;
+            --accent: #58a6ff;
+            --accent2: #bc8cff;
+            --accent3: #3fb950;
+            --text: #e6edf3;
+            --text-muted: #8b949e;
+            --danger: #f85149;
+            --node-media: #1f6feb;
+            --node-people: #388bfd;
+            --node-polv: #bc8cff;
+            --node-custom: #3fb950;
+            --shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            --radius: 10px;
+            --font: 'Inter', sans-serif;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            background: var(--bg);
+            color: var(--text);
+            font-family: var(--font);
+            overflow: hidden;
+        }
+
+        /* ══════════════════════════════════
+       TOOLBAR
+    ══════════════════════════════════ */
+        #toolbar {
+            position: fixed;
+            top: 16px;
+            left: 16px;
+            display: flex;
+            gap: 8px;
+            z-index: 100;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text);
+            font-family: var(--font);
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s, transform 0.1s;
+        }
+
+        .btn:hover {
+            background: var(--surface2);
+            border-color: var(--accent);
+        }
+
+        .btn:active {
+            transform: scale(0.97);
+        }
+
+        .btn.primary {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #0d1117;
+        }
+
+        .btn.primary:hover {
+            background: #79b8ff;
+            border-color: #79b8ff;
+        }
+
+        .btn.danger {
+            border-color: var(--danger);
+            color: var(--danger);
+        }
+
+        #add-edge-btn.active {
+            background: #1f6feb33;
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        /* ══════════════════════════════════
+       USER SELECTOR (top-right)
+    ══════════════════════════════════ */
+        #user-bar {
+            position: fixed;
+            top: 16px;
+            right: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 100;
+        }
+
+        #user-bar label {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        #user-select {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text);
+            font-family: var(--font);
+            font-size: 13px;
+            padding: 8px 12px;
+            cursor: pointer;
+            min-width: 180px;
+            transition: border-color 0.2s;
+        }
+
+        #user-select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        /* ══════════════════════════════════
+       SVG CANVAS
+    ══════════════════════════════════ */
+        #graph-svg {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+
+        /* Node circles */
+        .node-circle {
+            stroke-width: 2.5;
+            cursor: pointer;
+            transition: filter 0.2s;
+            filter: drop-shadow(0 0 8px rgba(88, 166, 255, 0.3));
+        }
+
+        .node-circle:hover {
+            filter: drop-shadow(0 0 16px rgba(88, 166, 255, 0.7));
+        }
+
+        .node-label {
+            fill: #e6edf3;
+            font-family: var(--font);
+            font-size: 13px;
+            font-weight: 600;
+            text-anchor: middle;
+            dominant-baseline: central;
+            pointer-events: none;
+            user-select: none;
+        }
+
+        /* Edges */
+        .edge-path {
+            fill: none;
+            stroke: #58a6ff;
+            stroke-linecap: round;
+            cursor: pointer;
+            transition: stroke 0.2s, opacity 0.2s;
+            opacity: 0.75;
+        }
+
+        .edge-path:hover {
+            stroke: #79b8ff;
+            opacity: 1;
+        }
+
+        .edge-path.adding-edge-hover {
+            stroke: #3fb950;
+            opacity: 1;
+        }
+
+        .edge-label {
+            fill: var(--text-muted);
+            font-family: var(--font);
+            font-size: 11px;
+            font-weight: 500;
+            text-anchor: middle;
+            dominant-baseline: central;
+            pointer-events: none;
+            user-select: none;
+        }
+
+        /* Arrows */
+        marker path {
+            fill: #58a6ff;
+        }
+
+        /* ══════════════════════════════════
+       MODAL OVERLAY
+    ══════════════════════════════════ */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(13, 17, 23, 0.85);
+            backdrop-filter: blur(4px);
+            z-index: 200;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.open {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 28px;
+            width: 560px;
+            max-width: 95vw;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: var(--shadow);
+            animation: slideUp 0.2s ease;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 20px;
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .modal-subtitle {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 3px;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 22px;
+            cursor: pointer;
+            line-height: 1;
+            padding: 2px 6px;
+            border-radius: 6px;
+            transition: color 0.2s, background 0.2s;
+        }
+
+        .modal-close:hover {
+            color: var(--text);
+            background: var(--surface2);
+        }
+
+        /* Paper cards */
+        .paper-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .paper-card {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 14px 16px;
+        }
+
+        .paper-card-blurb {
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 8px;
+        }
+
+        .paper-card-meta {
+            font-size: 12px;
+            color: var(--text-muted);
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .paper-card-meta a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .paper-card-meta a:hover {
+            text-decoration: underline;
+        }
+
+        .paper-empty {
+            text-align: center;
+            padding: 24px;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        /* Add paper form inline */
+        .add-paper-toggle {
+            width: 100%;
+            justify-content: center;
+        }
+
+        .add-paper-form {
+            display: none;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+        }
+
+        .add-paper-form.open {
+            display: block;
+        }
+
+        /* ══════════════════════════════════
+       FORMS (modal + panel)
+    ══════════════════════════════════ */
+        .form-group {
+            margin-bottom: 14px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 6px;
+        }
+
+        .form-input,
+        .form-select,
+        .form-textarea {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-family: var(--font);
+            font-size: 14px;
+            padding: 9px 12px;
+            transition: border-color 0.2s;
+        }
+
+        .form-input:focus,
+        .form-select:focus,
+        .form-textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .form-textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .form-select {
+            cursor: pointer;
+        }
+
+        .form-file-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            border: 2px dashed var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            font-size: 13px;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: border-color 0.2s, color 0.2s;
+        }
+
+        .form-file-label:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .form-file-label input {
+            display: none;
+        }
+
+        #file-name-display {
+            font-size: 12px;
+            color: var(--accent3);
+            margin-top: 4px;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+            margin-top: 16px;
+        }
+
+        /* ══════════════════════════════════
+       SIDE PANELS (Add Node / Add Edge)
+    ══════════════════════════════════ */
+        .side-panel {
+            display: none;
+            position: fixed;
+            top: 64px;
+            left: 16px;
+            width: 300px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 20px;
+            box-shadow: var(--shadow);
+            z-index: 150;
+            animation: slideUp 0.2s ease;
+        }
+
+        .side-panel.open {
+            display: block;
+        }
+
+        .side-panel h3 {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+
+        /* ══════════════════════════════════
+       BAR CHART (bottom-right)
+    ══════════════════════════════════ */
+        #chart-panel {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 280px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px;
+            box-shadow: var(--shadow);
+            z-index: 100;
+        }
+
+        #chart-panel h4 {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
+
+        #contrib-chart {
+            max-height: 160px;
+        }
+
+        /* ══════════════════════════════════
+       LOADING / STATUS
+    ══════════════════════════════════ */
+        #status-bar {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 99px;
+            padding: 8px 20px;
+            font-size: 13px;
+            color: var(--text-muted);
+            z-index: 300;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        #status-bar.show {
+            opacity: 1;
+        }
+
+        /* ══════════════════════════════════
+       TOOLTIP
+    ══════════════════════════════════ */
+        #tooltip {
+            position: fixed;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 400;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- ── TOOLBAR ─────────────────────────────── -->
+    <div id="toolbar">
+        <button class="btn primary" id="add-node-btn">＋ Node</button>
+        <button class="btn" id="add-edge-btn">＋ Edge</button>
+    </div>
+
+    <!-- ── USER BAR ────────────────────────────── -->
+    <div id="user-bar">
+        <label for="user-select">You are:</label>
+        <select id="user-select">
+            <option value="">— select your name —</option>
+        </select>
+    </div>
+
+    <!-- ── GRAPH CANVAS ───────────────────────── -->
+    <svg id="graph-svg">
+        <defs>
+            <!-- default arrow -->
+            <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"
+                markerUnits="strokeWidth">
+                <path d="M0,0 L0,6 L8,3 z" fill="#58a6ff" />
+            </marker>
+            <!-- hover arrow -->
+            <marker id="arrow-hover" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"
+                markerUnits="strokeWidth">
+                <path d="M0,0 L0,6 L8,3 z" fill="#79b8ff" />
+            </marker>
+            <!-- green arrow for custom nodes -->
+            <marker id="arrow-green" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"
+                markerUnits="strokeWidth">
+                <path d="M0,0 L0,6 L8,3 z" fill="#3fb950" />
+            </marker>
+        </defs>
+    </svg>
+
+    <!-- ── ADD NODE PANEL ─────────────────────── -->
+    <div id="add-node-panel" class="side-panel">
+        <h3>Add New Node</h3>
+        <div class="form-group">
+            <label class="form-label" for="new-node-name">Node Name</label>
+            <input class="form-input" id="new-node-name" type="text" placeholder="e.g. Social Media" />
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="connect-to-select">Connect to existing node</label>
+            <select class="form-select" id="connect-to-select">
+                <option value="">— pick a node —</option>
+            </select>
+        </div>
+        <div class="form-actions">
+            <button class="btn" id="cancel-node-btn">Cancel</button>
+            <button class="btn primary" id="confirm-node-btn">Add Node</button>
+        </div>
+    </div>
+
+    <!-- ── ADD EDGE INSTRUCTIONS ─────────────── -->
+    <div id="add-edge-panel" class="side-panel">
+        <h3>Add Edge</h3>
+        <p style="font-size:13px;color:var(--text-muted);line-height:1.5">
+            Click a <strong>source</strong> node then a <strong>target</strong> node on the graph.<br /><br />
+            An edge will be drawn between them. It becomes permanent in the sheet when you add a paper to it.
+        </p>
+        <div style="margin-top:12px" id="edge-step-indicator" style="font-size:12px;color:var(--accent)"></div>
+        <div class="form-actions" style="margin-top:16px">
+            <button class="btn" id="cancel-edge-btn">Cancel</button>
+        </div>
+    </div>
+
+    <!-- ── PAPER MODAL ───────────────────────── -->
+    <div id="paper-modal-overlay" class="modal-overlay">
+        <div class="modal" id="paper-modal">
+            <div class="modal-header">
+                <div>
+                    <div class="modal-title" id="modal-edge-title">Papers</div>
+                    <div class="modal-subtitle" id="modal-edge-subtitle"></div>
+                </div>
+                <button class="modal-close" id="modal-close-btn">×</button>
+            </div>
+            <div class="paper-list" id="paper-list"></div>
+
+            <!-- Add paper toggle -->
+            <button class="btn add-paper-toggle" id="add-paper-toggle-btn">＋ Add Paper to this Edge</button>
+
+            <!-- Add paper form -->
+            <div class="add-paper-form" id="add-paper-form">
+                <div class="form-group">
+                    <label class="form-label">Blurb / Abstract</label>
+                    <textarea class="form-textarea" id="paper-blurb"
+                        placeholder="Brief description of what this paper shows…"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">PDF File (optional)</label>
+                    <label class="form-file-label">
+                        <span id="file-label-text">📄 Click to choose a PDF</span>
+                        <input type="file" id="paper-file" accept=".pdf,application/pdf" />
+                    </label>
+                    <div id="file-name-display"></div>
+                </div>
+                <div class="form-actions">
+                    <button class="btn" id="cancel-paper-btn">Cancel</button>
+                    <button class="btn primary" id="submit-paper-btn">Upload &amp; Save</button>
+                </div>
+                <div id="paper-submit-status" style="font-size:12px;margin-top:8px;color:var(--text-muted)"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── CONTRIBUTOR CHART ─────────────────── -->
+    <div id="chart-panel">
+        <h4>Papers by Contributor</h4>
+        <canvas id="contrib-chart"></canvas>
+        <div id="chart-empty"
+            style="font-size:12px;color:var(--text-muted);text-align:center;padding:12px 0;display:none">
+            No papers yet
+        </div>
+    </div>
+
+    <!-- ── STATUS BAR ─────────────────────────── -->
+    <div id="status-bar"></div>
+
+    <!-- ── TOOLTIP ───────────────────────────── -->
+    <div id="tooltip"></div>
+
+
+    <!-- ═══════════════════════════════════════════════════════════
+     JAVASCRIPT
+═══════════════════════════════════════════════════════════════ -->
+    <script>
+        // ╔══════════════════════════════════════════════════════════╗
+        //  CONFIG — paste your deployed Apps Script URL here
+        // ╚══════════════════════════════════════════════════════════╝
+        const CONFIG = {
+            // After deploying Code.gs, paste the Web App URL here:
+            APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbz05s-YbGypPPBykcw4ltjGhq6Sgixa1yDwmkllBFf7ltXXyE0pO9jSVs5pnl-ez2Ym/exec"
+        };
+
+        // ══════════════════════════════════════════════════════════════
+        //  STATE
+        // ══════════════════════════════════════════════════════════════
+        let users = [];   // [{email, name}]
+        let papers = [];   // [{startNode, endNode, user, blurb, filename}]
+
+        // Graph nodes list — fixed + custom (from localStorage)
+        const FIXED_NODES = [
+            { id: "Media", label: "Media", fixed: true, color: "#1f6feb" },
+            { id: "People", label: "People", fixed: true, color: "#388bfd" },
+            { id: "Political Viability", label: "Political Viability", fixed: true, color: "#bc8cff" }
+        ];
+
+        // Default edges — these are always rendered even if no papers exist
+        const DEFAULT_EDGES = [
+            { source: "Media", target: "People" },
+            { source: "People", target: "Political Viability" }
+        ];
+
+        let customNodes = JSON.parse(localStorage.getItem("customNodes") || "[]");
+        let customEdges = JSON.parse(localStorage.getItem("customEdges") || "[]");
+        let nodePositions = JSON.parse(localStorage.getItem("nodePositions") || "{}");
+
+        let currentUser = localStorage.getItem("selectedUser") || "";
+        let addEdgeMode = false;
+        let edgeSourceId = null;
+        let activeEdge = null; // currently open modal edge {source, target}
+
+        // ── Chart instance
+        let contribChart = null;
+
+        // ══════════════════════════════════════════════════════════════
+        //  UTILITIES
+        // ══════════════════════════════════════════════════════════════
+        function showStatus(msg, ms = 3000) {
+            const bar = document.getElementById("status-bar");
+            bar.textContent = msg;
+            bar.classList.add("show");
+            clearTimeout(bar._t);
+            bar._t = setTimeout(() => bar.classList.remove("show"), ms);
+        }
+
+        function edgeKey(src, tgt) { return src + "|||" + tgt; }
+
+        function papersForEdge(src, tgt) {
+            return papers.filter(p => p.startNode === src && p.endNode === tgt);
+        }
+
+        function allNodes() {
+            return [
+                ...FIXED_NODES,
+                ...customNodes.map(n => ({ id: n.id, label: n.label, fixed: false, color: "#3fb950" }))
+            ];
+        }
+
+        function allEdges() {
+            const edgeMap = {};
+            // Default edges
+            DEFAULT_EDGES.forEach(e => { edgeMap[edgeKey(e.source, e.target)] = { source: e.source, target: e.target }; });
+            // Edges implied by papers
+            papers.forEach(p => {
+                if (p.startNode && p.endNode) edgeMap[edgeKey(p.startNode, p.endNode)] = { source: p.startNode, target: p.endNode };
+            });
+            // Custom edges
+            customEdges.forEach(e => { edgeMap[edgeKey(e.source, e.target)] = { source: e.source, target: e.target }; });
+            return Object.values(edgeMap);
+        }
+
+        function nameForEmail(email) {
+            const u = users.find(u => u.email === email);
+            return u ? u.name : email;
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        //  API CALLS
+        // ══════════════════════════════════════════════════════════════
+        async function apiGet(action) {
+            const url = `${CONFIG.APPS_SCRIPT_URL}?action=${action}`;
+            const res = await fetch(url);
+            return res.json();
+        }
+
+        async function apiPost(payload) {
+            const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
+                method: "POST",
+                body: JSON.stringify(payload),
+                // text/plain avoids the CORS OPTIONS preflight that Apps Script cannot handle
+                headers: { "Content-Type": "text/plain" }
+            });
+            return res.json();
+        }
+
+        async function loadData() {
+            showStatus("Loading data…", 10000);
+            try {
+                [users, papers] = await Promise.all([apiGet("getUsers"), apiGet("getPapers")]);
+                showStatus("Data loaded ✓");
+                populateUserDropdown();
+                renderChart();
+                renderGraph();
+            } catch (e) {
+                showStatus("⚠ Could not reach Apps Script. Check CONFIG.APPS_SCRIPT_URL", 8000);
+                console.error(e);
+                // Render graph with empty data so UI is still usable
+                renderGraph();
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        //  USER DROPDOWN
+        // ══════════════════════════════════════════════════════════════
+        function populateUserDropdown() {
+            const sel = document.getElementById("user-select");
+            sel.innerHTML = `<option value="">— select your name —</option>`;
+            users.forEach(u => {
+                const opt = document.createElement("option");
+                opt.value = u.email;
+                opt.textContent = u.name;
+                if (u.email === currentUser) opt.selected = true;
+                sel.appendChild(opt);
+            });
+        }
+
+        document.getElementById("user-select").addEventListener("change", e => {
+            currentUser = e.target.value;
+            localStorage.setItem("selectedUser", currentUser);
+        });
+
+        // ══════════════════════════════════════════════════════════════
+        //  D3 GRAPH
+        // ══════════════════════════════════════════════════════════════
+        const svg = d3.select("#graph-svg");
+        const W = () => window.innerWidth;
+        const H = () => window.innerHeight;
+
+        // Layers
+        const edgeLayer = svg.append("g").attr("class", "edge-layer");
+        const labelLayer = svg.append("g").attr("class", "label-layer");
+        const nodeLayer = svg.append("g").attr("class", "node-layer");
+
+        // Zoom
+        const zoom = d3.zoom().scaleExtent([0.2, 4])
+            .on("zoom", (event) => {
+                edgeLayer.attr("transform", event.transform);
+                labelLayer.attr("transform", event.transform);
+                nodeLayer.attr("transform", event.transform);
+            });
+        svg.call(zoom);
+
+        // Fixed node initial positions (if not overridden by localStorage)
+        const DEFAULT_POSITIONS = {
+            "Media": { x: W() * 0.25, y: H() * 0.5 },
+            "People": { x: W() * 0.5, y: H() * 0.5 },
+            "Political Viability": { x: W() * 0.75, y: H() * 0.5 }
+        };
+
+        function getPos(id) {
+            if (nodePositions[id]) return nodePositions[id];
+            if (DEFAULT_POSITIONS[id]) return DEFAULT_POSITIONS[id];
+            // New custom node: assign a random position and persist it immediately
+            // so the node circle and its edge endpoints always use the same coordinates
+            const pos = { x: 150 + Math.random() * (W() - 300), y: 150 + Math.random() * (H() - 300) };
+            savePos(id, pos.x, pos.y);
+            return pos;
+        }
+
+        function savePos(id, x, y) {
+            nodePositions[id] = { x, y };
+            localStorage.setItem("nodePositions", JSON.stringify(nodePositions));
+        }
+
+        // ── NODE RADIUS
+        function nodeRadius(id) {
+            const count = papers.filter(p => p.startNode === id || p.endNode === id).length;
+            return 32 + count * 2;
+        }
+
+        // ── EDGE STROKE WIDTH (proportional to paper count)
+        function edgeStrokeWidth(src, tgt) {
+            const n = papersForEdge(src, tgt).length;
+            return Math.max(2, 2 + n * 1.5);
+        }
+
+        // ── Compute curved path between two nodes
+        function edgePath(src, tgt, nodeMap, curvature = 0) {
+            const s = nodeMap[src];
+            const t = nodeMap[tgt];
+            if (!s || !t) return "";
+            const sr = nodeRadius(src);
+            const tr = nodeRadius(tgt);
+
+            const dx = t.x - s.x, dy = t.y - s.y;
+            const len = Math.sqrt(dx * dx + dy * dy) || 1;
+
+            const sx = s.x + dx / len * sr;
+            const sy = s.y + dy / len * sr;
+            const ex = t.x - dx / len * (tr + 10);
+            const ey = t.y - dy / len * (tr + 10);
+
+            if (curvature === 0) {
+                return `M${sx},${sy} L${ex},${ey}`;
+            }
+            // Curved arc
+            const mx = (sx + ex) / 2;
+            const my = (sy + ey) / 2;
+            const nx = -dy / len * curvature;
+            const ny = dx / len * curvature;
+            return `M${sx},${sy} Q${mx + nx},${my + ny} ${ex},${ey}`;
+        }
+
+        function edgeMidpoint(d, nodeMap, curvature = 0) {
+            const s = nodeMap[d.source];
+            const t = nodeMap[d.target];
+            if (!s || !t) return { x: 0, y: 0 };
+            if (curvature === 0) return { x: (s.x + t.x) / 2, y: (s.y + t.y) / 2 };
+            const dx = t.x - s.x, dy = t.y - s.y;
+            const len = Math.sqrt(dx * dx + dy * dy) || 1;
+            const mx = (s.x + t.x) / 2, my = (s.y + t.y) / 2;
+            return { x: mx - dy / len * curvature * 0.5, y: my + dx / len * curvature * 0.5 };
+        }
+
+        function renderGraph() {
+            const nodes = allNodes();
+            const edges = allEdges();
+            const nodeMap = {};
+            nodes.forEach(n => {
+                const p = getPos(n.id);
+                nodeMap[n.id] = { x: p.x, y: p.y };
+            });
+
+            // Figure out which edges are "reverse pairs" and need curvature
+            const edgeSet = new Set(edges.map(e => edgeKey(e.source, e.target)));
+            function curvatureFor(e) {
+                return edgeSet.has(edgeKey(e.target, e.source)) ? 50 : 0;
+            }
+
+            // ── EDGES
+            const edgeSel = edgeLayer.selectAll("path.edge-path")
+                .data(edges, d => edgeKey(d.source, d.target));
+
+            edgeSel.enter().append("path")
+                .attr("class", "edge-path")
+                .attr("marker-end", "url(#arrow)")
+                .on("click", function (event, d) {
+                    if (addEdgeMode) return;
+                    openModal(d.source, d.target);
+                })
+                .on("mouseenter", function (event, d) {
+                    const tip = document.getElementById("tooltip");
+                    const n = papersForEdge(d.source, d.target).length;
+                    tip.textContent = `${d.source} → ${d.target}  (${n} paper${n !== 1 ? "s" : ""})`;
+                    tip.style.display = "block";
+                })
+                .on("mousemove", function (event) {
+                    const tip = document.getElementById("tooltip");
+                    tip.style.left = (event.clientX + 14) + "px";
+                    tip.style.top = (event.clientY - 20) + "px";
+                })
+                .on("mouseleave", function () {
+                    document.getElementById("tooltip").style.display = "none";
+                })
+                .merge(edgeSel)
+                .attr("d", d => edgePath(d.source, d.target, nodeMap, curvatureFor(d)))
+                .attr("stroke-width", d => edgeStrokeWidth(d.source, d.target));
+
+            edgeSel.exit().remove();
+
+            // ── EDGE LABELS (paper count)
+            const labelSel = labelLayer.selectAll("text.edge-label")
+                .data(edges, d => edgeKey(d.source, d.target));
+
+            labelSel.enter().append("text")
+                .attr("class", "edge-label")
+                .merge(labelSel)
+                .each(function (d) {
+                    const curve = curvatureFor(d);
+                    const mid = edgeMidpoint(d, nodeMap, curve);
+                    const n = papersForEdge(d.source, d.target).length;
+                    d3.select(this)
+                        .attr("x", mid.x)
+                        .attr("y", mid.y - 10)
+                        .text(n > 0 ? `${n} paper${n !== 1 ? "s" : ""}` : "");
+                });
+
+            labelSel.exit().remove();
+
+            // ── NODES
+            const nodeSel = nodeLayer.selectAll("g.node-g")
+                .data(nodes, d => d.id);
+
+            const nodeEnter = nodeSel.enter().append("g")
+                .attr("class", "node-g")
+                .attr("transform", d => {
+                    const p = getPos(d.id);
+                    return `translate(${p.x},${p.y})`;
+                });
+
+            nodeEnter.append("circle")
+                .attr("class", "node-circle")
+                .attr("fill", d => d.color)
+                .attr("stroke", d => d3.color(d.color).brighter(0.5))
+                .attr("r", d => nodeRadius(d.id));
+
+            nodeEnter.append("text")
+                .attr("class", "node-label")
+                .text(d => d.label);
+
+            const nodeMerged = nodeEnter.merge(nodeSel);
+
+            nodeMerged.select("circle")
+                .attr("r", d => nodeRadius(d.id));
+
+            // Drag (custom nodes — and fixed nodes keep their position via savePos)
+            nodeMerged.call(
+                d3.drag()
+                    .on("drag", function (event, d) {
+                        if (addEdgeMode) return;
+                        const g = d3.select(this);
+                        const p = getPos(d.id);
+                        const nx = p.x + event.dx;
+                        const ny = p.y + event.dy;
+                        savePos(d.id, nx, ny);
+                        nodeMap[d.id] = { x: nx, y: ny };
+                        g.attr("transform", `translate(${nx},${ny})`);
+                        renderEdgesOnly(edges, nodeMap);
+                    })
+            );
+
+            // Node click in add-edge mode
+            nodeMerged.on("click", function (event, d) {
+                if (!addEdgeMode) return;
+                event.stopPropagation();
+                if (!edgeSourceId) {
+                    edgeSourceId = d.id;
+                    d3.select(this).select("circle").attr("stroke", "#3fb950").attr("stroke-width", 4);
+                    document.getElementById("edge-step-indicator").textContent = `Source: ${d.label} — now click target`;
+                } else if (edgeSourceId !== d.id) {
+                    const src = edgeSourceId;
+                    const tgt = d.id;
+                    // Avoid duplicate
+                    if (!edges.find(e => e.source === src && e.target === tgt)) {
+                        customEdges.push({ source: src, target: tgt });
+                        localStorage.setItem("customEdges", JSON.stringify(customEdges));
+                        showStatus(`Edge added: ${src} → ${tgt}`);
+                    } else {
+                        showStatus("Edge already exists");
+                    }
+                    cancelEdgeMode();
+                    renderGraph();
+                }
+            });
+
+            nodeSel.exit().remove();
+        }
+
+        function renderEdgesOnly(edges, nodeMap) {
+            const edgeSet = new Set(edges.map(e => edgeKey(e.source, e.target)));
+            function curvatureFor(e) { return edgeSet.has(edgeKey(e.target, e.source)) ? 50 : 0; }
+            edgeLayer.selectAll("path.edge-path")
+                .attr("d", d => edgePath(d.source, d.target, nodeMap, curvatureFor(d)));
+            labelLayer.selectAll("text.edge-label")
+                .each(function (d) {
+                    const curve = curvatureFor(d);
+                    const mid = edgeMidpoint(d, nodeMap, curve);
+                    d3.select(this).attr("x", mid.x).attr("y", mid.y - 10);
+                });
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        //  PAPER MODAL
+        // ══════════════════════════════════════════════════════════════
+        function openModal(src, tgt) {
+            activeEdge = { source: src, target: tgt };
+            document.getElementById("modal-edge-title").textContent = `${src} → ${tgt}`;
+            document.getElementById("modal-edge-subtitle").textContent =
+                `${papersForEdge(src, tgt).length} paper(s) collected`;
+
+            renderPaperList(src, tgt);
+            closeAddPaperForm();
+            document.getElementById("paper-modal-overlay").classList.add("open");
+        }
+
+        function renderPaperList(src, tgt) {
+            const list = document.getElementById("paper-list");
+            const ps = papersForEdge(src, tgt);
+
+            if (ps.length === 0) {
+                list.innerHTML = `<div class="paper-empty">No papers yet for this edge.<br/>Be the first to add one!</div>`;
+                return;
+            }
+
+            list.innerHTML = ps.map((p, i) => `
+    <div class="paper-card">
+      <div class="paper-card-blurb">${escHtml(p.blurb) || "<em style='color:var(--text-muted)'>No blurb provided</em>"}</div>
+      <div class="paper-card-meta">
+        <span>👤 ${escHtml(nameForEmail(p.user)) || escHtml(p.user)}</span>
+        ${p.filename
+                    ? `<a href="https://drive.google.com/file/d/${escHtml(p.filename)}/view" target="_blank" rel="noopener">📄 View PDF</a>`
+                    : ""}
+      </div>
+    </div>
+  `).join("");
+        }
+
+        function escHtml(s) {
+            if (!s) return "";
+            return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        }
+
+        function closeModal() {
+            document.getElementById("paper-modal-overlay").classList.remove("open");
+            activeEdge = null;
+        }
+
+        document.getElementById("modal-close-btn").addEventListener("click", closeModal);
+        document.getElementById("paper-modal-overlay").addEventListener("click", e => {
+            if (e.target === document.getElementById("paper-modal-overlay")) closeModal();
+        });
+
+        // ── Add paper toggle
+        document.getElementById("add-paper-toggle-btn").addEventListener("click", () => {
+            if (!currentUser) { showStatus("Please select your name first (top-right)"); return; }
+            const form = document.getElementById("add-paper-form");
+            form.classList.toggle("open");
+            document.getElementById("add-paper-toggle-btn").textContent =
+                form.classList.contains("open") ? "✕ Cancel" : "＋ Add Paper to this Edge";
+        });
+
+        function closeAddPaperForm() {
+            document.getElementById("add-paper-form").classList.remove("open");
+            document.getElementById("add-paper-toggle-btn").textContent = "＋ Add Paper to this Edge";
+            document.getElementById("paper-blurb").value = "";
+            document.getElementById("paper-file").value = "";
+            document.getElementById("file-name-display").textContent = "";
+            document.getElementById("paper-submit-status").textContent = "";
+        }
+
+        document.getElementById("cancel-paper-btn").addEventListener("click", closeAddPaperForm);
+
+        // File input display
+        document.getElementById("paper-file").addEventListener("change", e => {
+            const f = e.target.files[0];
+            document.getElementById("file-name-display").textContent = f ? `Selected: ${f.name}` : "";
+        });
+
+        // ── Submit paper
+        document.getElementById("submit-paper-btn").addEventListener("click", async () => {
+            if (!activeEdge) return;
+            if (!currentUser) { showStatus("Please select your name first"); return; }
+
+            const blurb = document.getElementById("paper-blurb").value.trim();
+            const fileEl = document.getElementById("paper-file");
+            const file = fileEl.files[0];
+            const statusEl = document.getElementById("paper-submit-status");
+
+            if (!blurb && !file) { statusEl.textContent = "Please add a blurb or a PDF file."; return; }
+
+            const btn = document.getElementById("submit-paper-btn");
+            btn.disabled = true;
+            btn.textContent = "Uploading…";
+            statusEl.textContent = "";
+
+            try {
+                let fileData = "";
+                let mimeType = "application/pdf";
+                let filename = "";
+
+                if (file) {
+                    mimeType = file.type || "application/pdf";
+                    filename = file.name;
+                    fileData = await readFileAsBase64(file);
+                }
+
+                const payload = {
+                    action: "addPaper",
+                    startNode: activeEdge.source,
+                    endNode: activeEdge.target,
+                    user: currentUser,
+                    blurb: blurb,
+                    filename: filename,
+                    fileData: fileData,
+                    mimeType: mimeType
+                };
+
+                const res = await apiPost(payload);
+                if (res.error) throw new Error(res.error);
+
+                // Update local state
+                papers.push({
+                    startNode: activeEdge.source,
+                    endNode: activeEdge.target,
+                    user: currentUser,
+                    blurb: blurb,
+                    filename: res.driveFileId || ""
+                });
+
+                renderPaperList(activeEdge.source, activeEdge.target);
+                document.getElementById("modal-edge-subtitle").textContent =
+                    `${papersForEdge(activeEdge.source, activeEdge.target).length} paper(s) collected`;
+                closeAddPaperForm();
+                renderGraph();
+                renderChart();
+                showStatus("Paper added successfully ✓");
+            } catch (e) {
+                statusEl.textContent = "Error: " + e.message;
+                console.error(e);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "Upload & Save";
+            }
+        });
+
+        function readFileAsBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result.split(",")[1]);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        //  ADD NODE PANEL
+        // ══════════════════════════════════════════════════════════════
+        document.getElementById("add-node-btn").addEventListener("click", () => {
+            closePanels();
+            // Populate connect-to dropdown
+            const sel = document.getElementById("connect-to-select");
+            sel.innerHTML = `<option value="">— pick a node —</option>`;
+            allNodes().forEach(n => {
+                const opt = document.createElement("option");
+                opt.value = n.id; opt.textContent = n.label;
+                sel.appendChild(opt);
+            });
+            document.getElementById("add-node-panel").classList.add("open");
+        });
+
+        document.getElementById("cancel-node-btn").addEventListener("click", closePanels);
+
+        document.getElementById("confirm-node-btn").addEventListener("click", () => {
+            const name = document.getElementById("new-node-name").value.trim();
+            const connectTo = document.getElementById("connect-to-select").value;
+            if (!name) { showStatus("Please enter a node name"); return; }
+            if (!connectTo) { showStatus("Please select a node to connect to"); return; }
+
+            const id = name; // use label as ID
+            if (allNodes().find(n => n.id === id)) { showStatus("A node with that name already exists"); return; }
+
+            customNodes.push({ id, label: name });
+            localStorage.setItem("customNodes", JSON.stringify(customNodes));
+
+            customEdges.push({ source: connectTo, target: id });
+            localStorage.setItem("customEdges", JSON.stringify(customEdges));
+
+            document.getElementById("new-node-name").value = "";
+            closePanels();
+            renderGraph();
+            showStatus(`Node "${name}" added and connected to "${connectTo}"`);
+        });
+
+        // ══════════════════════════════════════════════════════════════
+        //  ADD EDGE MODE
+        // ══════════════════════════════════════════════════════════════
+        document.getElementById("add-edge-btn").addEventListener("click", () => {
+            if (addEdgeMode) { cancelEdgeMode(); return; }
+            closePanels();
+            addEdgeMode = true;
+            edgeSourceId = null;
+            document.getElementById("add-edge-btn").classList.add("active");
+            document.getElementById("add-edge-panel").classList.add("open");
+            document.getElementById("edge-step-indicator").textContent = "Click a source node…";
+        });
+
+        document.getElementById("cancel-edge-btn").addEventListener("click", cancelEdgeMode);
+
+        function cancelEdgeMode() {
+            addEdgeMode = false;
+            edgeSourceId = null;
+            document.getElementById("add-edge-btn").classList.remove("active");
+            document.getElementById("add-edge-panel").classList.remove("open");
+            // Reset highlighted node strokes (datum lives on g.node-g, not on the circle)
+            nodeLayer.selectAll("g.node-g").select("circle")
+                .attr("stroke", function () {
+                    const d = d3.select(this.parentNode).datum();
+                    return d && d.color ? d3.color(d.color).brighter(0.5) : "#fff";
+                })
+                .attr("stroke-width", 2.5);
+        }
+
+        function closePanels() {
+            document.getElementById("add-node-panel").classList.remove("open");
+            document.getElementById("add-edge-panel").classList.remove("open");
+            if (addEdgeMode) cancelEdgeMode();
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        //  CONTRIBUTOR BAR CHART
+        // ══════════════════════════════════════════════════════════════
+        function renderChart() {
+            const counts = {};
+            papers.forEach(p => {
+                const name = nameForEmail(p.user) || p.user || "Unknown";
+                counts[name] = (counts[name] || 0) + 1;
+            });
+
+            const labels = Object.keys(counts);
+            const values = Object.values(counts);
+
+            const emptyEl = document.getElementById("chart-empty");
+
+            if (labels.length === 0) {
+                emptyEl.style.display = "block";
+                if (contribChart) { contribChart.destroy(); contribChart = null; }
+                return;
+            }
+            emptyEl.style.display = "none";
+
+            const ctx = document.getElementById("contrib-chart").getContext("2d");
+            if (contribChart) contribChart.destroy();
+
+            contribChart = new Chart(ctx, {
+                type: "bar",
+                data: {
+                    labels,
+                    datasets: [{
+                        data: values,
+                        backgroundColor: labels.map((_, i) =>
+                            ["#58a6ff", "#bc8cff", "#3fb950", "#f0883e", "#e3b341"][i % 5]),
+                        borderRadius: 5,
+                        borderSkipped: false
+                    }]
+                },
+                options: {
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => ` ${ctx.raw} paper${ctx.raw !== 1 ? "s" : ""}`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: "#8b949e", font: { family: "Inter", size: 11 } },
+                            grid: { color: "#21262d" }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            ticks: { stepSize: 1, color: "#8b949e", font: { family: "Inter", size: 11 } },
+                            grid: { color: "#21262d" }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        //  RESIZE HANDLER
+        // ══════════════════════════════════════════════════════════════
+        let resizeTimer;
+        window.addEventListener("resize", () => {
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(renderGraph, 200);
+        });
+
+        // ══════════════════════════════════════════════════════════════
+        //  INIT
+        // ══════════════════════════════════════════════════════════════
+        loadData();
+    </script>
+</body>
+
+</html>
