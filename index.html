@@ -1106,7 +1106,14 @@
                 return;
             }
 
-            list.innerHTML = ps.map((p, i) => `
+            list.innerHTML = ps.map((p, i) => {
+                // Determine the best PDF ID (support both new driveId column and older data where ID was in filename)
+                let bestId = p.driveId;
+                if (!bestId && p.filename && !p.filename.includes('.') && p.filename.length > 20) {
+                    bestId = p.filename;
+                }
+
+                return `
     <div class="paper-card">
       <div class="paper-card-blurb">${escHtml(p.blurb) || "<em style='color:var(--text-muted)'>No blurb provided</em>"}</div>
       <div class="paper-card-meta">
@@ -1117,13 +1124,14 @@
         ` : ""}
         <div style="display:flex; justify-content:space-between; align-items:center; width:100%; font-size:12px;">
           <span>👤 ${escHtml(nameForEmail(p.user)) || escHtml(p.user)}</span>
-          ${p.driveId
-                    ? `<a href="https://drive.google.com/file/d/${escHtml(p.driveId)}/view" target="_blank" rel="noopener">📄 View PDF</a>`
-                    : ""}
+          ${bestId
+                        ? `<a href="https://drive.google.com/file/d/${escHtml(bestId)}/view" target="_blank" rel="noopener">📄 View PDF</a>`
+                        : (p.filename ? `<span style="color:var(--text-muted)">📎 ${escHtml(p.filename)}</span>` : "")}
         </div>
       </div>
     </div>
-  `).join("");
+  `;
+            }).join("");
         }
 
         function escHtml(s) {
