@@ -630,6 +630,21 @@
             <!-- Add paper form -->
             <div class="add-paper-form" id="add-paper-form">
                 <div class="form-group">
+                    <label class="form-label">Author(s)</label>
+                    <input type="text" class="form-input" id="paper-author" placeholder="e.g. Smith, J. & Doe, A.">
+                </div>
+                <div class="form-row" style="display:grid; grid-template-columns: 1fr 100px; gap: 12px;">
+                    <div class="form-group">
+                        <label class="form-label">Journal / Source</label>
+                        <input type="text" class="form-input" id="paper-journal"
+                            placeholder="e.g. Nature, Political Science Quarterly">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Year</label>
+                        <input type="text" class="form-input" id="paper-year" placeholder="2024">
+                    </div>
+                </div>
+                <div class="form-group">
                     <label class="form-label">Blurb / Abstract</label>
                     <textarea class="form-textarea" id="paper-blurb"
                         placeholder="Brief description of what this paper shows…"></textarea>
@@ -1075,10 +1090,17 @@
     <div class="paper-card">
       <div class="paper-card-blurb">${escHtml(p.blurb) || "<em style='color:var(--text-muted)'>No blurb provided</em>"}</div>
       <div class="paper-card-meta">
-        <span>👤 ${escHtml(nameForEmail(p.user)) || escHtml(p.user)}</span>
-        ${p.filename
+        ${(p.author || p.year || p.journal) ? `
+          <div style="font-weight:600; margin-bottom:4px; font-size:13px;">
+            ${escHtml(p.author)}${p.year ? ` (${escHtml(p.year)})` : ""}${p.journal ? ` — <em>${escHtml(p.journal)}</em>` : ""}
+          </div>
+        ` : ""}
+        <div style="display:flex; justify-content:space-between; align-items:center; width:100%; font-size:12px;">
+          <span>👤 ${escHtml(nameForEmail(p.user)) || escHtml(p.user)}</span>
+          ${p.filename
                     ? `<a href="https://drive.google.com/file/d/${escHtml(p.filename)}/view" target="_blank" rel="noopener">📄 View PDF</a>`
                     : ""}
+        </div>
       </div>
     </div>
   `).join("");
@@ -1130,12 +1152,15 @@
             if (!activeEdge) return;
             if (!currentUser) { showStatus("Please select your name first"); return; }
 
+            const author = document.getElementById("paper-author").value.trim();
+            const journal = document.getElementById("paper-journal").value.trim();
+            const year = document.getElementById("paper-year").value.trim();
             const blurb = document.getElementById("paper-blurb").value.trim();
             const fileEl = document.getElementById("paper-file");
             const file = fileEl.files[0];
             const statusEl = document.getElementById("paper-submit-status");
 
-            if (!blurb && !file) { statusEl.textContent = "Please add a blurb or a PDF file."; return; }
+            if (!blurb && !file && !author) { statusEl.textContent = "Please add at least an author, a blurb, or a PDF file."; return; }
 
             const btn = document.getElementById("submit-paper-btn");
             btn.disabled = true;
@@ -1159,6 +1184,9 @@
                     endNode: activeEdge.target,
                     user: currentUser,
                     blurb: blurb,
+                    author: author,
+                    journal: journal,
+                    year: year,
                     filename: filename,
                     fileData: fileData,
                     mimeType: mimeType
@@ -1173,12 +1201,23 @@
                     endNode: activeEdge.target,
                     user: currentUser,
                     blurb: blurb,
+                    author: author,
+                    journal: journal,
+                    year: year,
                     filename: res.driveFileId || ""
                 });
 
                 renderPaperList(activeEdge.source, activeEdge.target);
                 document.getElementById("modal-edge-subtitle").textContent =
                     `${papersForEdge(activeEdge.source, activeEdge.target).length} paper(s) collected`;
+
+                // Reset form
+                document.getElementById("paper-author").value = "";
+                document.getElementById("paper-journal").value = "";
+                document.getElementById("paper-year").value = "";
+                document.getElementById("paper-blurb").value = "";
+                document.getElementById("paper-file").value = "";
+                document.getElementById("file-name-display").textContent = "";
                 closeAddPaperForm();
                 renderGraph();
                 renderChart();
