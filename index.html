@@ -317,6 +317,24 @@
             font-size: 14px;
             line-height: 1.5;
             margin-bottom: 8px;
+            padding: 4px 8px;
+            /* Added for border breathing room */
+            border: 2px solid transparent;
+            /* Placeholder */
+            border-radius: 6px;
+        }
+
+        .paper-card-blurb.relevance-Medium {
+            border-color: #a3d1ff;
+            /* light blue */
+            background: rgba(163, 209, 255, 0.05);
+        }
+
+        .paper-card-blurb.relevance-High {
+            border-color: #3399ff;
+            /* slightly darker blue */
+            border-width: 3px;
+            background: rgba(51, 153, 255, 0.08);
         }
 
         .paper-card-meta {
@@ -643,6 +661,14 @@
                         <label class="form-label">Year</label>
                         <input type="text" class="form-input" id="paper-year" placeholder="2024">
                     </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Relevance</label>
+                    <select class="form-select" id="paper-relevance">
+                        <option value="Low" selected>Low (No border)</option>
+                        <option value="Medium">Medium (Thin light blue border)</option>
+                        <option value="High">High (Thicker darker blue border)</option>
+                    </select>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Blurb / Abstract</label>
@@ -1115,7 +1141,7 @@
 
                 return `
     <div class="paper-card">
-      <div class="paper-card-blurb">${escHtml(p.blurb) || "<em style='color:var(--text-muted)'>No blurb provided</em>"}</div>
+      <div class="paper-card-blurb relevance-${p.relevance || 'Low'}">${escHtml(p.blurb) || "<em style='color:var(--text-muted)'>No blurb provided</em>"}</div>
       <div class="paper-card-meta">
         ${(p.author || p.year || p.journal) ? `
           <div style="font-weight:600; margin-bottom:4px; font-size:13px;">
@@ -1183,6 +1209,7 @@
             const author = document.getElementById("paper-author").value.trim();
             const journal = document.getElementById("paper-journal").value.trim();
             const year = document.getElementById("paper-year").value.trim();
+            const relevance = document.getElementById("paper-relevance").value;
             const blurb = document.getElementById("paper-blurb").value.trim();
             const fileEl = document.getElementById("paper-file");
             const file = fileEl.files[0];
@@ -1215,7 +1242,8 @@
                     author: author,
                     journal: journal,
                     year: year,
-                    filename: filename,
+                    relevance: relevance,
+                    filename: filename,       // Original name (e.g. "Paper.pdf")
                     fileData: fileData,
                     mimeType: mimeType
                 };
@@ -1232,6 +1260,7 @@
                     author: author,
                     journal: journal,
                     year: year,
+                    relevance: relevance,
                     filename: filename,       // Original name (e.g. "Paper.pdf")
                     driveId: res.driveFileId  // Internal ID for linking
                 });
@@ -1244,6 +1273,7 @@
                 document.getElementById("paper-author").value = "";
                 document.getElementById("paper-journal").value = "";
                 document.getElementById("paper-year").value = "";
+                document.getElementById("paper-relevance").value = "Low";
                 document.getElementById("paper-blurb").value = "";
                 document.getElementById("paper-file").value = "";
                 document.getElementById("file-name-display").textContent = "";
