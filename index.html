@@ -116,6 +116,26 @@
             color: var(--accent);
         }
 
+        /* Group Container styling */
+        .group-rect {
+            fill: rgba(31, 111, 235, 0.05);
+            stroke: #1f6feb;
+            stroke-dasharray: 4;
+            stroke-width: 1.5;
+            rx: 12;
+            ry: 12;
+            /* pointer-events handled by JS element attribute */
+        }
+
+        .group-label {
+            fill: #1f6feb;
+            font-size: 13px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            pointer-events: none;
+        }
+
         /* ══════════════════════════════════
        USER SELECTOR (top-right)
     ══════════════════════════════════ */
@@ -188,7 +208,8 @@
         .edge-path {
             fill: none;
             stroke: #58a6ff;
-            stroke-linecap: round;
+            stroke-linecap: butt;
+            /* Prevents stroke from extending past coordinates */
             cursor: pointer;
             transition: stroke 0.2s, opacity 0.2s;
             opacity: 0.75;
@@ -561,6 +582,13 @@
 
 <body>
 
+    <!-- ── HEADER ──────────────────────────────── -->
+    <header
+        style="text-align: center; padding: 20px 0; background: var(--surface); border-bottom: 1px solid var(--border);">
+        <h1 style="margin: 0; font-family: var(--font); color: var(--text); font-size: 24px; letter-spacing: -0.5px;">
+            The Fight for Political Accountability</h1>
+    </header>
+
     <!-- ── TOOLBAR ─────────────────────────────── -->
     <div id="toolbar">
         <button class="btn primary" id="add-node-btn">＋ Node</button>
@@ -580,20 +608,39 @@
     <!-- ── GRAPH CANVAS ───────────────────────── -->
     <svg id="graph-svg">
         <defs>
-            <!-- default arrow -->
-            <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"
-                markerUnits="strokeWidth">
-                <path d="M0,0 L0,6 L8,3 z" fill="#58a6ff" />
+            <!-- 5 sizes for smooth scaling (userSpaceOnUse to stop distortion) -->
+            <!-- Flat bases (M0,X -> L0,Y) combined with refX=0 precisely covers wide butt lines -->
+            <marker id="arrow-xs" markerWidth="14" markerHeight="14" refX="0" refY="7" orient="auto"
+                markerUnits="userSpaceOnUse" viewBox="0 0 14 14">
+                <path d="M0,2 L14,7 L0,12 Z" fill="#58a6ff" />
             </marker>
-            <!-- hover arrow -->
-            <marker id="arrow-hover" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"
-                markerUnits="strokeWidth">
-                <path d="M0,0 L0,6 L8,3 z" fill="#79b8ff" />
+            <marker id="arrow-s" markerWidth="18" markerHeight="18" refX="0" refY="9" orient="auto"
+                markerUnits="userSpaceOnUse" viewBox="0 0 18 18">
+                <path d="M0,2 L18,9 L0,16 Z" fill="#58a6ff" />
             </marker>
-            <!-- green arrow for custom nodes -->
-            <marker id="arrow-green" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto"
-                markerUnits="strokeWidth">
-                <path d="M0,0 L0,6 L8,3 z" fill="#3fb950" />
+            <marker id="arrow-m" markerWidth="24" markerHeight="24" refX="0" refY="12" orient="auto"
+                markerUnits="userSpaceOnUse" viewBox="0 0 24 24">
+                <path d="M0,2 L24,12 L0,22 Z" fill="#58a6ff" />
+            </marker>
+            <marker id="arrow-l" markerWidth="30" markerHeight="30" refX="0" refY="15" orient="auto"
+                markerUnits="userSpaceOnUse" viewBox="0 0 30 30">
+                <path d="M0,1 L30,15 L0,29 Z" fill="#58a6ff" />
+            </marker>
+            <marker id="arrow-xl" markerWidth="40" markerHeight="40" refX="0" refY="20" orient="auto"
+                markerUnits="userSpaceOnUse" viewBox="0 0 40 40">
+                <path d="M0,0 L40,20 L0,40 Z" fill="#58a6ff" />
+            </marker>
+
+            <!-- Hover variant -->
+            <marker id="arrow-hover" markerWidth="22" markerHeight="22" refX="0" refY="11" orient="auto"
+                markerUnits="userSpaceOnUse" viewBox="0 0 22 22">
+                <path d="M0,2 L22,11 L0,20 Z" fill="#79b8ff" />
+            </marker>
+
+            <!-- Custom node variant -->
+            <marker id="arrow-green" markerWidth="18" markerHeight="18" refX="0" refY="9" orient="auto"
+                markerUnits="userSpaceOnUse" viewBox="0 0 18 18">
+                <path d="M0,2 L18,9 L0,16 Z" fill="#3fb950" />
             </marker>
         </defs>
     </svg>
@@ -671,6 +718,12 @@
                     </select>
                 </div>
                 <div class="form-group">
+                    <label class="form-label">Pathway</label>
+                    <select class="form-select" id="paper-pathway-select"></select>
+                    <input type="text" class="form-input" id="paper-pathway-new"
+                        placeholder="Or type a new pathway name..." style="margin-top:8px; display:none;">
+                </div>
+                <div class="form-group">
                     <label class="form-label">Blurb / Abstract</label>
                     <textarea class="form-textarea" id="paper-blurb"
                         placeholder="Brief description of what this paper shows…"></textarea>
@@ -727,22 +780,32 @@
         let users = [];   // [{email, name}]
         let papers = [];   // [{startNode, endNode, user, blurb, filename}]
 
+        // Pathway color matching
+        const pathwayColorScale = d3.scaleOrdinal(d3.schemeSet2);
+        function getEdgeColor(pathway) {
+            return pathway ? pathwayColorScale(pathway) : "#58a6ff";
+        }
+
         // Graph nodes list — fixed + custom (from localStorage)
         const FIXED_NODES = [
-            { id: "Media", label: "Media", fixed: true, color: "#1f6feb" },
-            { id: "People", label: "People", fixed: true, color: "#388bfd" },
-            { id: "Political Viability", label: "Political Viability", fixed: true, color: "#bc8cff" }
+            { id: "Media", label: "MEDIA", fixed: true, color: "transparent", isContainer: true, baseSize: 52 },
+            { id: "Media:Legacy", label: "Legacy", fixed: true, color: "#1f6feb", baseSize: 32, subnodeOf: "Media", xOffset: -30, yOffset: 6 },
+            { id: "Media:Social", label: "Social", fixed: true, color: "#1f6feb", baseSize: 32, subnodeOf: "Media", xOffset: 30, yOffset: 6 },
+            { id: "People", label: "People", fixed: true, color: "#1f6feb", baseSize: 32 },
+            { id: "Government", label: "Government", fixed: true, color: "#1f6feb", baseSize: 32 }
         ];
 
-        // Default edges — these are always rendered even if no papers exist
+        // Default edges
         const DEFAULT_EDGES = [
-            { source: "Media", target: "People" },
-            { source: "People", target: "Political Viability" }
+            { source: "Media:Legacy", target: "People", pathway: "" },
+            { source: "Media:Social", target: "People", pathway: "" },
+            { source: "People", target: "Government", pathway: "" }
         ];
 
         let customNodes = JSON.parse(localStorage.getItem("customNodes") || "[]");
         let customEdges = JSON.parse(localStorage.getItem("customEdges") || "[]");
         let nodePositions = JSON.parse(localStorage.getItem("nodePositions") || "{}");
+        let hideDefaultEdges = localStorage.getItem("hideDefaultEdges") === "true";
 
         let currentUser = localStorage.getItem("selectedUser") || "";
         let addEdgeMode = false;
@@ -763,21 +826,31 @@
             bar._t = setTimeout(() => bar.classList.remove("show"), ms);
         }
 
-        function edgeKey(src, tgt) { return src + "|||" + tgt; }
+        function edgeKey(src, tgt, pathway = "") {
+            return src + "|||" + tgt + "|||" + (pathway || "Default");
+        }
 
-        function papersForEdge(src, tgt) {
-            return papers.filter(p => p.startNode === src && p.endNode === tgt);
+        function papersForEdge(src, tgt, pathway = "") {
+            return papers.filter(p => p.startNode === src && p.endNode === tgt && (p.pathway || "") === (pathway || ""));
         }
 
         function allNodes() {
             const nodesMap = {};
             // Start with fixed nodes
             FIXED_NODES.forEach(n => {
-                nodesMap[n.id] = { id: n.id, label: n.label, color: n.color, fixed: true };
+                nodesMap[n.id] = {
+                    id: n.id,
+                    label: n.label,
+                    color: n.color,
+                    fixed: true,
+                    isContainer: n.isContainer,
+                    subnodeOf: n.subnodeOf
+                };
             });
 
             // Add nodes found in papers (sync from Google Sheet)
             papers.forEach(p => {
+                // If it's a fixed node by ID, we already have it. 
                 if (p.startNode && !nodesMap[p.startNode]) {
                     nodesMap[p.startNode] = { id: p.startNode, label: p.startNode, fixed: false, color: "#3fb950" };
                 }
@@ -798,14 +871,25 @@
 
         function allEdges() {
             const edgeMap = {};
-            // Default edges
-            DEFAULT_EDGES.forEach(e => { edgeMap[edgeKey(e.source, e.target)] = { source: e.source, target: e.target }; });
+            // Default edges (can be cleared by user if no papers are attached)
+            if (!hideDefaultEdges) {
+                DEFAULT_EDGES.forEach(e => {
+                    const k = edgeKey(e.source, e.target, e.pathway);
+                    edgeMap[k] = { source: e.source, target: e.target, pathway: e.pathway || "" };
+                });
+            }
             // Edges implied by papers
             papers.forEach(p => {
-                if (p.startNode && p.endNode) edgeMap[edgeKey(p.startNode, p.endNode)] = { source: p.startNode, target: p.endNode };
+                if (p.startNode && p.endNode) {
+                    const k = edgeKey(p.startNode, p.endNode, p.pathway);
+                    edgeMap[k] = { source: p.startNode, target: p.endNode, pathway: p.pathway || "" };
+                }
             });
             // Custom edges
-            customEdges.forEach(e => { edgeMap[edgeKey(e.source, e.target)] = { source: e.source, target: e.target }; });
+            customEdges.forEach(e => {
+                const k = edgeKey(e.source, e.target, e.pathway);
+                edgeMap[k] = { source: e.source, target: e.target, pathway: e.pathway || "" };
+            });
             return Object.values(edgeMap);
         }
 
@@ -836,7 +920,23 @@
         async function loadData() {
             showStatus("Loading data…", 10000);
             try {
-                [users, papers] = await Promise.all([apiGet("getUsers"), apiGet("getPapers")]);
+                const [u, p] = await Promise.all([apiGet("getUsers"), apiGet("getPapers")]);
+                users = u;
+
+                // DATA NORMALIZATION: Map Spreadsheet "Media:X" syntax to our IDs
+                papers = p.map(paper => {
+                    // Support "Media:Social" -> "Media:Social" etc.
+                    // Legacy support for "Legacy Media" and "Social Media" strings
+                    if (paper.startNode === "Legacy Media") paper.startNode = "Media:Legacy";
+                    if (paper.endNode === "Legacy Media") paper.endNode = "Media:Legacy";
+                    if (paper.startNode === "Social Media") paper.startNode = "Media:Social";
+                    if (paper.endNode === "Social Media") paper.endNode = "Media:Social";
+                    // Legacy support for "Media" -> "Media (All)"
+                    if (paper.startNode === "Media") paper.startNode = "Media";
+                    if (paper.endNode === "Media") paper.endNode = "Media";
+                    return paper;
+                });
+
                 showStatus("Data loaded ✓");
                 populateUserDropdown();
                 renderChart();
@@ -891,15 +991,24 @@
         svg.call(zoom);
 
         // Fixed node initial positions (if not overridden by localStorage)
-        const DEFAULT_POSITIONS = {
-            "Media": { x: W() * 0.25, y: H() * 0.5 },
-            "People": { x: W() * 0.5, y: H() * 0.5 },
-            "Political Viability": { x: W() * 0.75, y: H() * 0.5 }
-        };
-
         function getPos(id) {
+            // Force subnodes to stick tightly to their parent's coordinate
+            const fixed = FIXED_NODES.find(n => n.id === id);
+            if (fixed && fixed.subnodeOf) {
+                const p = getPos(fixed.subnodeOf);
+                return { x: p.x + fixed.xOffset, y: p.y + fixed.yOffset };
+            }
+
             if (nodePositions[id]) return nodePositions[id];
-            if (DEFAULT_POSITIONS[id]) return DEFAULT_POSITIONS[id];
+
+            // Default spacing
+            const w = W(), h = H();
+            const defaults = {
+                "Media": { x: w * 0.20, y: h * 0.40 },
+                "People": { x: w * 0.50, y: h * 0.40 },
+                "Government": { x: w * 0.75, y: h * 0.40 }
+            };
+            if (defaults[id]) return defaults[id];
             // New custom node: assign a random position and persist it immediately
             // so the node circle and its edge endpoints always use the same coordinates
             const pos = { x: 150 + Math.random() * (W() - 300), y: 150 + Math.random() * (H() - 300) };
@@ -914,41 +1023,80 @@
 
         // ── NODE RADIUS
         function nodeRadius(id) {
+            const fixed = FIXED_NODES.find(n => n.id === id);
+            if (fixed) return fixed.baseSize; // Fixed nodes handle their own core size
+
             const count = papers.filter(p => p.startNode === id || p.endNode === id).length;
             return 32 + count * 2;
         }
 
         // ── EDGE STROKE WIDTH (proportional to paper count)
-        function edgeStrokeWidth(src, tgt) {
-            const n = papersForEdge(src, tgt).length;
+        function edgeStrokeWidth(src, tgt, pathway = "") {
+            const n = papersForEdge(src, tgt, pathway).length;
             return Math.max(2, 2 + n * 1.5);
         }
 
         // ── Compute curved path between two nodes
-        function edgePath(src, tgt, nodeMap, curvature = 0) {
+        function edgePath(d, nodeMap, curvature = 0) {
+            const src = d.source;
+            const tgt = d.target;
             const s = nodeMap[src];
             const t = nodeMap[tgt];
             if (!s || !t) return "";
+
+            const n = papersForEdge(src, tgt, d.pathway).length;
+            let arrowLen = 14;
+            if (n > 12) arrowLen = 40;
+            else if (n > 7) arrowLen = 30;
+            else if (n > 4) arrowLen = 24;
+            else if (n > 1) arrowLen = 18;
+
             const sr = nodeRadius(src);
             const tr = nodeRadius(tgt);
 
             const dx = t.x - s.x, dy = t.y - s.y;
             const len = Math.sqrt(dx * dx + dy * dy) || 1;
 
-            const sx = s.x + dx / len * sr;
-            const sy = s.y + dy / len * sr;
-            const ex = t.x - dx / len * (tr + 10);
-            const ey = t.y - dy / len * (tr + 10);
+            // Shift the perceived start/end centers perpendicularly based on curvature.
+            // This forces curved edges bounding for the same target to physically land 
+            // at different distinct points around its circumference, preventing overlaps!
+            const perpX = -dy / len * (curvature * 0.25);
+            const perpY = dx / len * (curvature * 0.25);
+
+            const sxCenter = s.x + perpX;
+            const syCenter = s.y + perpY;
+            const txCenter = t.x + perpX;
+            const tyCenter = t.y + perpY;
 
             if (curvature === 0) {
+                const sx = sxCenter + dx / len * sr;
+                const sy = syCenter + dy / len * sr;
+                const ex = txCenter - dx / len * (tr + 2 + arrowLen);
+                const ey = tyCenter - dy / len * (tr + 2 + arrowLen);
                 return `M${sx},${sy} L${ex},${ey}`;
             }
-            // Curved arc
-            const mx = (sx + ex) / 2;
-            const my = (sy + ey) / 2;
+
+            // Curved arc: use tangent control points for precise boundary connections
+            const mx = (sxCenter + txCenter) / 2;
+            const my = (syCenter + tyCenter) / 2;
             const nx = -dy / len * curvature;
             const ny = dx / len * curvature;
-            return `M${sx},${sy} Q${mx + nx},${my + ny} ${ex},${ey}`;
+            const cx = mx + nx;
+            const cy = my + ny;
+
+            // Start vector directly toward control point
+            const dsx = cx - sxCenter, dsy = cy - syCenter;
+            const slen = Math.sqrt(dsx * dsx + dsy * dsy) || 1;
+            const sx = sxCenter + dsx / slen * sr;
+            const sy = syCenter + dsy / slen * sr;
+
+            // End vector directly from control point targeting end
+            const dtx = txCenter - cx, dty = tyCenter - cy;
+            const tlen = Math.sqrt(dtx * dtx + dty * dty) || 1;
+            const ex = txCenter - dtx / tlen * (tr + 2 + arrowLen);
+            const ey = tyCenter - dty / tlen * (tr + 2 + arrowLen);
+
+            return `M${sx},${sy} Q${cx},${cy} ${ex},${ey}`;
         }
 
         function edgeMidpoint(d, nodeMap, curvature = 0) {
@@ -971,27 +1119,133 @@
                 nodeMap[n.id] = { x: p.x, y: p.y };
             });
 
-            // Figure out which edges are "reverse pairs" and need curvature
-            const edgeSet = new Set(edges.map(e => edgeKey(e.source, e.target)));
-            function curvatureFor(e) {
-                return edgeSet.has(edgeKey(e.target, e.source)) ? 50 : 0;
-            }
+            // ── DYNAMIC MARKERS (Colors & Sizes)
+            const SIZES = [
+                { id: "xs", len: 14, refY: 7, path: "M0,2 L14,7 L0,12 Z" },
+                { id: "s", len: 18, refY: 9, path: "M0,2 L18,9 L0,16 Z" },
+                { id: "m", len: 24, refY: 12, path: "M0,2 L24,12 L0,22 Z" },
+                { id: "l", len: 30, refY: 15, path: "M0,1 L30,15 L0,29 Z" },
+                { id: "xl", len: 40, refY: 20, path: "M0,0 L40,20 L0,40 Z" }
+            ];
+
+            const defs = svg.select("defs");
+            const pathwayGroups = ["", ...new Set(edges.map(e => String(e.pathway || "")).filter(p => p))];
+            const markerData = [];
+            pathwayGroups.forEach(p => {
+                const color = getEdgeColor(p);
+                const prefix = p ? `arrow-${String(p).replace(/[^a-zA-Z0-9]/g, '-')}-` : "arrow-";
+                SIZES.forEach(s => {
+                    markerData.push({ id: `${prefix}${s.id}`, size: s, color: color });
+                });
+            });
+
+            const markerSel = defs.selectAll("marker.dynamic-marker").data(markerData, d => d.id);
+            const markerEnter = markerSel.enter().append("marker")
+                .attr("class", "dynamic-marker")
+                .attr("id", d => d.id)
+                .attr("markerWidth", d => d.size.len)
+                .attr("markerHeight", d => d.size.len)
+                .attr("refX", 0)
+                .attr("refY", d => d.size.refY)
+                .attr("orient", "auto")
+                .attr("markerUnits", "userSpaceOnUse")
+                .attr("viewBox", d => `0 0 ${d.size.len} ${d.size.len}`);
+
+            markerEnter.append("path")
+                .attr("d", d => d.size.path);
+
+            const markerMerged = markerEnter.merge(markerSel);
+            markerMerged.select("path").attr("fill", d => d.color);
+            markerSel.exit().remove();
 
             // ── EDGES
             const edgeSel = edgeLayer.selectAll("path.edge-path")
-                .data(edges, d => edgeKey(d.source, d.target));
+                .data(edges, d => edgeKey(d.source, d.target, d.pathway));
+
+            // Figure out which edges are "reverse pairs" and need curvature
+            const edgeSet = new Set(edges.map(e => edgeKey(e.source, e.target, e.pathway)));
+
+            // Group edges by exact pair to fan out multiple pathways between the SAME exact nodes
+            const pairCounts = {};
+            edges.forEach(e => {
+                const k = [e.source, e.target].sort().join("<>");
+                pairCounts[k] = (pairCounts[k] || 0) + 1;
+            });
+            const pairIndex = {};
+
+            function getCurvature(e) {
+                const k = [e.source, e.target].sort().join("<>");
+                const total = pairCounts[k];
+                const idx = pairIndex[k] || 0;
+                pairIndex[k] = idx + 1;
+
+                const sNode = nodes.find(n => n.id === e.source);
+                const tNode = nodes.find(n => n.id === e.target);
+
+                // Base curvature logic for bidirectional
+                const isBidirectional = edgeSet.has(edgeKey(e.target, e.source, e.pathway));
+                const sameParent = (sNode && tNode && sNode.subnodeOf && sNode.subnodeOf === tNode.subnodeOf);
+
+                let base = isBidirectional ? 40 : 0;
+
+                if (sameParent) {
+                    base = -80; // Powerful outward arc over the top bounding boxes
+                } else {
+                    // Naturally fan out subnodes connecting to external nodes based on their physical offset
+                    // This prevents Legacy->People and Social->People from overlapping
+                    let bow = 0;
+                    const s = nodeMap[e.source];
+                    const t = nodeMap[e.target];
+                    if (s && t) {
+                        const dx = t.x - s.x;
+                        const dy = t.y - s.y;
+                        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                        const nx = -dy / len;
+                        const ny = dx / len; // Normal vector
+
+                        if (sNode && sNode.subnodeOf) {
+                            const dot = (sNode.xOffset || 0) * nx + (sNode.yOffset || 0) * ny;
+                            bow += dot * 1.5;
+                        }
+                        if (tNode && tNode.subnodeOf) {
+                            const dot = (tNode.xOffset || 0) * nx + (tNode.yOffset || 0) * ny;
+                            bow += dot * 1.5;
+                        }
+                    }
+                    base += bow;
+                }
+
+                // If multiple pathways exist for the EXACT same pair, spread them out further
+                if (total > 1) {
+                    base += (idx - (total - 1) / 2) * 45; // Wide spread
+                }
+                return base;
+            }
+
+            // Memoize curvatures for labels
+            edges.forEach(e => e._curvature = getCurvature(e));
 
             edgeSel.enter().append("path")
                 .attr("class", "edge-path")
-                .attr("marker-end", "url(#arrow)")
+                .attr("marker-end", d => {
+                    const n = papersForEdge(d.source, d.target, d.pathway).length;
+                    const pStr = d.pathway ? String(d.pathway) : "";
+                    const prefix = pStr ? `arrow-${pStr.replace(/[^a-zA-Z0-9]/g, '-')}-` : "arrow-";
+                    if (n > 12) return `url(#${prefix}xl)`;
+                    if (n > 7) return `url(#${prefix}l)`;
+                    if (n > 4) return `url(#${prefix}m)`;
+                    if (n > 1) return `url(#${prefix}s)`;
+                    return `url(#${prefix}xs)`;
+                })
                 .on("click", function (event, d) {
                     if (addEdgeMode) return;
-                    openModal(d.source, d.target);
+                    openModal(d.source, d.target, d.pathway);
                 })
                 .on("mouseenter", function (event, d) {
                     const tip = document.getElementById("tooltip");
-                    const n = papersForEdge(d.source, d.target).length;
-                    tip.textContent = `${d.source} → ${d.target}  (${n} paper${n !== 1 ? "s" : ""})`;
+                    const n = papersForEdge(d.source, d.target, d.pathway).length;
+                    const pathTxt = d.pathway ? ` via ${d.pathway}` : "";
+                    tip.textContent = `${d.source} → ${d.target}${pathTxt} (${n} paper${n !== 1 ? "s" : ""})`;
                     tip.style.display = "block";
                 })
                 .on("mousemove", function (event) {
@@ -1003,26 +1257,42 @@
                     document.getElementById("tooltip").style.display = "none";
                 })
                 .merge(edgeSel)
-                .attr("d", d => edgePath(d.source, d.target, nodeMap, curvatureFor(d)))
-                .attr("stroke-width", d => edgeStrokeWidth(d.source, d.target));
+                .attr("stroke", d => getEdgeColor(d.pathway))
+                .attr("d", d => edgePath(d, nodeMap, d._curvature))
+                .attr("stroke-width", d => edgeStrokeWidth(d.source, d.target, d.pathway));
 
             edgeSel.exit().remove();
 
-            // ── EDGE LABELS (paper count)
+            // ── EDGE LABELS (pathway + paper count)
             const labelSel = labelLayer.selectAll("text.edge-label")
-                .data(edges, d => edgeKey(d.source, d.target));
+                .data(edges, d => edgeKey(d.source, d.target, d.pathway));
 
             labelSel.enter().append("text")
                 .attr("class", "edge-label")
                 .merge(labelSel)
                 .each(function (d) {
-                    const curve = curvatureFor(d);
-                    const mid = edgeMidpoint(d, nodeMap, curve);
-                    const n = papersForEdge(d.source, d.target).length;
+                    const mid = edgeMidpoint(d, nodeMap, d._curvature);
+
+                    const s = nodeMap[d.source];
+                    const t = nodeMap[d.target];
+                    if (!s || !t) return;
+                    const dx = t.x - s.x, dy = t.y - s.y;
+
+                    let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                    if (angle > 90 || angle < -90) { // Keep text readable
+                        angle += 180;
+                    }
+
+                    const n = papersForEdge(d.source, d.target, d.pathway).length;
+                    const labelText = d.pathway ? `${d.pathway} (${n})` : (n > 0 ? `${n} paper${n !== 1 ? "s" : ""}` : "");
+
                     d3.select(this)
                         .attr("x", mid.x)
-                        .attr("y", mid.y - 10)
-                        .text(n > 0 ? `${n} paper${n !== 1 ? "s" : ""}` : "");
+                        .attr("y", mid.y)
+                        .attr("transform", `rotate(${angle}, ${mid.x}, ${mid.y}) translate(0, -6)`)
+                        .style("text-anchor", "middle")
+                        .attr("fill", getEdgeColor(d.pathway))
+                        .text(labelText);
                 });
 
             labelSel.exit().remove();
@@ -1038,11 +1308,31 @@
                     return `translate(${p.x},${p.y})`;
                 });
 
-            nodeEnter.append("circle")
-                .attr("class", "node-circle")
-                .attr("fill", d => d.color)
-                .attr("stroke", d => d3.color(d.color).brighter(0.5))
-                .attr("r", d => nodeRadius(d.id));
+            // Fixed nodes are squares, custom nodes are circles
+            nodeEnter.each(function (d) {
+                const g = d3.select(this);
+                if (d.isContainer) {
+                    g.append("rect")
+                        .attr("class", "node-shape group-rect")
+                        .attr("fill", "rgba(31, 111, 235, 0.05)")
+                        .attr("stroke", "#1f6feb")
+                        .attr("stroke-dasharray", "4")
+                        .attr("stroke-width", "1.5")
+                        .attr("pointer-events", "all"); // Allow clicks exactly like other nodes
+                } else if (d.fixed) {
+                    g.append("rect")
+                        .attr("class", "node-shape")
+                        .attr("fill", d.color)
+                        .attr("stroke", d3.color(d.color).brighter(0.5))
+                        .attr("stroke-width", 2.5);
+                } else {
+                    g.append("circle")
+                        .attr("class", "node-shape")
+                        .attr("fill", d.color)
+                        .attr("stroke", d3.color(d.color).brighter(0.5))
+                        .attr("stroke-width", 2.5);
+                }
+            });
 
             nodeEnter.append("text")
                 .attr("class", "node-label")
@@ -1050,21 +1340,84 @@
 
             const nodeMerged = nodeEnter.merge(nodeSel);
 
-            nodeMerged.select("circle")
-                .attr("r", d => nodeRadius(d.id));
+            nodeMerged.select(".node-label")
+                .each(function (d) {
+                    const txt = d3.select(this);
+                    if (d.isContainer) {
+                        txt.attr("x", -60)
+                            .attr("y", -30)
+                            .style("text-anchor", "start")
+                            .style("font-size", "13px")
+                            .style("font-weight", "700")
+                            .style("text-transform", "uppercase")
+                            .style("letter-spacing", "0.5px")
+                            .style("fill", "#1f6feb");
+                    } else if (d.fixed) {
+                        txt.attr("x", 0)
+                            .attr("y", 4) // Center vertically inside the square
+                            .style("text-anchor", "middle")
+                            .style("font-size", "11px")
+                            .style("font-weight", "600")
+                            .style("fill", "#ffffff"); // White font
+                    } else {
+                        txt.attr("x", 0)
+                            .attr("y", 4) // Center vertically inside the circle
+                            .style("text-anchor", "middle")
+                            .style("font-size", "11px") // Matches square labels
+                            .style("font-weight", "600")
+                            .style("fill", "#ffffff") // White font
+                            .style("text-transform", "")
+                            .style("letter-spacing", "");
+                    }
+                });
 
-            // Drag (custom nodes — and fixed nodes keep their position via savePos)
+            nodeMerged.select(".node-shape")
+                .each(function (d) {
+                    const shape = d3.select(this);
+                    if (d.isContainer) {
+                        const width = 120;
+                        const height = 66;
+                        shape.attr("width", width).attr("height", height)
+                            .attr("x", -width / 2).attr("y", -height / 2 + 6)
+                            .attr("rx", 10);
+                    } else {
+                        const r = nodeRadius(d.id);
+                        if (d.fixed) {
+                            const size = r * 1.6; // Slightly smaller visual footprint than circles
+                            shape.attr("width", size).attr("height", size)
+                                .attr("x", -size / 2).attr("y", -size / 2)
+                                .attr("rx", 4); // Subtle rounded corners
+                        } else {
+                            shape.attr("r", r);
+                        }
+                    }
+                });
+
+            // Drag handling (Lock groups together natively)
             nodeMerged.call(
                 d3.drag()
                     .on("drag", function (event, d) {
                         if (addEdgeMode) return;
-                        const g = d3.select(this);
-                        const p = getPos(d.id);
+
+                        // 1. Enforce parent movement: If a subnode is dragged, redirect to dragging its parent container
+                        const targetId = d.subnodeOf ? d.subnodeOf : d.id;
+
+                        // 2. Update parent position
+                        const p = getPos(targetId);
                         const nx = p.x + event.dx;
                         const ny = p.y + event.dy;
-                        savePos(d.id, nx, ny);
-                        nodeMap[d.id] = { x: nx, y: ny };
-                        g.attr("transform", `translate(${nx},${ny})`);
+                        savePos(targetId, nx, ny);
+                        nodePositions[targetId] = { x: nx, y: ny }; // update memory immediately
+
+                        // 3. Move parent and all its subnodes visually
+                        const toUpdate = [targetId, ...nodes.filter(n => n.subnodeOf === targetId).map(n => n.id)];
+                        toUpdate.forEach(id => { nodeMap[id] = getPos(id); }); // Re-fetch locked child positions
+
+                        nodeLayer.selectAll("g.node-g")
+                            .filter(n => toUpdate.includes(n.id))
+                            .attr("transform", n => `translate(${nodeMap[n.id].x},${nodeMap[n.id].y})`);
+
+                        // 4. Update Edges
                         renderEdgesOnly(edges, nodeMap);
                     })
             );
@@ -1075,7 +1428,7 @@
                 event.stopPropagation();
                 if (!edgeSourceId) {
                     edgeSourceId = d.id;
-                    d3.select(this).select("circle").attr("stroke", "#3fb950").attr("stroke-width", 4);
+                    d3.select(this).select(".node-shape").attr("stroke", "#3fb950").attr("stroke-width", 4);
                     document.getElementById("edge-step-indicator").textContent = `Source: ${d.label} — now click target`;
                 } else if (edgeSourceId !== d.id) {
                     const src = edgeSourceId;
@@ -1097,35 +1450,81 @@
         }
 
         function renderEdgesOnly(edges, nodeMap) {
-            const edgeSet = new Set(edges.map(e => edgeKey(e.source, e.target)));
-            function curvatureFor(e) { return edgeSet.has(edgeKey(e.target, e.source)) ? 50 : 0; }
+            // Use the pre-calculated curvature stored in d._curvature from renderGraph
             edgeLayer.selectAll("path.edge-path")
-                .attr("d", d => edgePath(d.source, d.target, nodeMap, curvatureFor(d)));
+                .attr("d", d => edgePath(d, nodeMap, d._curvature || 0));
             labelLayer.selectAll("text.edge-label")
                 .each(function (d) {
-                    const curve = curvatureFor(d);
-                    const mid = edgeMidpoint(d, nodeMap, curve);
-                    d3.select(this).attr("x", mid.x).attr("y", mid.y - 10);
+                    const mid = edgeMidpoint(d, nodeMap, d._curvature || 0);
+
+                    const s = nodeMap[d.source];
+                    const t = nodeMap[d.target];
+                    if (!s || !t) return;
+
+                    const dx = t.x - s.x, dy = t.y - s.y;
+
+                    let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                    if (angle > 90 || angle < -90) angle += 180;
+
+                    d3.select(this)
+                        .attr("x", mid.x)
+                        .attr("y", mid.y)
+                        .attr("transform", `rotate(${angle}, ${mid.x}, ${mid.y}) translate(0, -6)`);
                 });
         }
 
         // ══════════════════════════════════════════════════════════════
         //  PAPER MODAL
         // ══════════════════════════════════════════════════════════════
-        function openModal(src, tgt) {
-            activeEdge = { source: src, target: tgt };
-            document.getElementById("modal-edge-title").textContent = `${src} → ${tgt}`;
-            document.getElementById("modal-edge-subtitle").textContent =
-                `${papersForEdge(src, tgt).length} paper(s) collected`;
+        function openModal(src, tgt, pathway = "") {
+            activeEdge = { source: src, target: tgt, pathway: pathway };
+            const title = document.getElementById("modal-edge-title");
+            title.textContent = `${src} → ${tgt}`;
+            if (pathway) title.textContent += ` (${pathway})`;
 
-            renderPaperList(src, tgt);
+            document.getElementById("modal-edge-subtitle").textContent =
+                `${papersForEdge(src, tgt, pathway).length} paper(s) collected`;
+
+            // Reset and Close the "Add Paper" form if it was open
             closeAddPaperForm();
+            renderPaperList(src, tgt, pathway);
+            populatePathwayDropdown();
+
             document.getElementById("paper-modal-overlay").classList.add("open");
         }
 
-        function renderPaperList(src, tgt) {
+        function populatePathwayDropdown() {
+            const select = document.getElementById("paper-pathway-select");
+            const existingPathways = [...new Set(papers.map(p => p.pathway).filter(p => p))];
+
+            let html = `<option value="">Default / None</option>`;
+            existingPathways.sort().forEach(p => {
+                html += `<option value="${p}">${p}</option>`;
+            });
+            html += `<option value="NEW">+ Add New Pathway...</option>`;
+            select.innerHTML = html;
+
+            // Set current pathway if we opened from a specific one
+            if (activeEdge && activeEdge.pathway) {
+                select.value = activeEdge.pathway;
+            } else {
+                select.value = "";
+            }
+
+            toggleNewPathwayInput();
+        }
+
+        function toggleNewPathwayInput() {
+            const select = document.getElementById("paper-pathway-select");
+            const input = document.getElementById("paper-pathway-new");
+            input.style.display = (select.value === "NEW") ? "block" : "none";
+        }
+
+        document.getElementById("paper-pathway-select").addEventListener("change", toggleNewPathwayInput);
+
+        function renderPaperList(src, tgt, pathway = "") {
             const list = document.getElementById("paper-list");
-            const ps = papersForEdge(src, tgt);
+            const ps = papersForEdge(src, tgt, pathway);
 
             if (ps.length === 0) {
                 list.innerHTML = `<div class="paper-empty">No papers yet for this edge.<br/>Be the first to add one!</div>`;
@@ -1210,6 +1609,12 @@
             const journal = document.getElementById("paper-journal").value.trim();
             const year = document.getElementById("paper-year").value.trim();
             const relevance = document.getElementById("paper-relevance").value;
+
+            let pathway = document.getElementById("paper-pathway-select").value;
+            if (pathway === "NEW") {
+                pathway = document.getElementById("paper-pathway-new").value.trim();
+            }
+
             const blurb = document.getElementById("paper-blurb").value.trim();
             const fileEl = document.getElementById("paper-file");
             const file = fileEl.files[0];
@@ -1243,6 +1648,7 @@
                     journal: journal,
                     year: year,
                     relevance: relevance,
+                    pathway: pathway,
                     filename: filename,       // Original name (e.g. "Paper.pdf")
                     fileData: fileData,
                     mimeType: mimeType
@@ -1261,18 +1667,22 @@
                     journal: journal,
                     year: year,
                     relevance: relevance,
+                    pathway: pathway,
                     filename: filename,       // Original name (e.g. "Paper.pdf")
                     driveId: res.driveFileId  // Internal ID for linking
                 });
 
-                renderPaperList(activeEdge.source, activeEdge.target);
+                renderPaperList(activeEdge.source, activeEdge.target, activeEdge.pathway);
                 document.getElementById("modal-edge-subtitle").textContent =
-                    `${papersForEdge(activeEdge.source, activeEdge.target).length} paper(s) collected`;
+                    `${papersForEdge(activeEdge.source, activeEdge.target, activeEdge.pathway).length} paper(s) collected`;
 
                 // Reset form
                 document.getElementById("paper-author").value = "";
                 document.getElementById("paper-journal").value = "";
                 document.getElementById("paper-year").value = "";
+                document.getElementById("paper-pathway-select").value = "";
+                document.getElementById("paper-pathway-new").value = "";
+                document.getElementById("paper-pathway-new").style.display = "none";
                 document.getElementById("paper-relevance").value = "Low";
                 document.getElementById("paper-blurb").value = "";
                 document.getElementById("paper-file").value = "";
@@ -1364,8 +1774,8 @@
             edgeSourceId = null;
             document.getElementById("add-edge-btn").classList.remove("active");
             document.getElementById("add-edge-panel").classList.remove("open");
-            // Reset highlighted node strokes (datum lives on g.node-g, not on the circle)
-            nodeLayer.selectAll("g.node-g").select("circle")
+            // Reset highlighted node strokes
+            nodeLayer.selectAll("g.node-g").select(".node-shape")
                 .attr("stroke", function () {
                     const d = d3.select(this.parentNode).datum();
                     return d && d.color ? d3.color(d.color).brighter(0.5) : "#fff";
@@ -1401,6 +1811,10 @@
             customEdges = customEdges.filter(e => {
                 return paperEdgeKeys.has(edgeKey(e.source, e.target));
             });
+
+            // Also hide the unpopulated default structure edges
+            hideDefaultEdges = true;
+            localStorage.setItem("hideDefaultEdges", "true");
 
             // Remove positions only for nodes actually being deleted
             removedNodeIds.forEach(id => delete nodePositions[id]);
