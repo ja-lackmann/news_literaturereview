@@ -1117,8 +1117,8 @@
         ` : ""}
         <div style="display:flex; justify-content:space-between; align-items:center; width:100%; font-size:12px;">
           <span>👤 ${escHtml(nameForEmail(p.user)) || escHtml(p.user)}</span>
-          ${p.filename
-                    ? `<a href="https://drive.google.com/file/d/${escHtml(p.filename)}/view" target="_blank" rel="noopener">📄 View PDF</a>`
+          ${p.driveId
+                    ? `<a href="https://drive.google.com/file/d/${escHtml(p.driveId)}/view" target="_blank" rel="noopener">📄 View PDF</a>`
                     : ""}
         </div>
       </div>
@@ -1224,7 +1224,8 @@
                     author: author,
                     journal: journal,
                     year: year,
-                    filename: res.driveFileId || ""
+                    filename: filename,       // Original name (e.g. "Paper.pdf")
+                    driveId: res.driveFileId  // Internal ID for linking
                 });
 
                 renderPaperList(activeEdge.source, activeEdge.target);
