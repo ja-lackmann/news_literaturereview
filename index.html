@@ -744,10 +744,30 @@
         }
 
         function allNodes() {
-            return [
-                ...FIXED_NODES,
-                ...customNodes.map(n => ({ id: n.id, label: n.label, fixed: false, color: "#3fb950" }))
-            ];
+            const nodesMap = {};
+            // Start with fixed nodes
+            FIXED_NODES.forEach(n => {
+                nodesMap[n.id] = { id: n.id, label: n.label, color: n.color, fixed: true };
+            });
+
+            // Add nodes found in papers (sync from Google Sheet)
+            papers.forEach(p => {
+                if (p.startNode && !nodesMap[p.startNode]) {
+                    nodesMap[p.startNode] = { id: p.startNode, label: p.startNode, fixed: false, color: "#3fb950" };
+                }
+                if (p.endNode && !nodesMap[p.endNode]) {
+                    nodesMap[p.endNode] = { id: p.endNode, label: p.endNode, fixed: false, color: "#3fb950" };
+                }
+            });
+
+            // Add custom nodes that don't have papers yet (from localStorage)
+            customNodes.forEach(n => {
+                if (!nodesMap[n.id]) {
+                    nodesMap[n.id] = { id: n.id, label: n.label, fixed: false, color: "#3fb950" };
+                }
+            });
+
+            return Object.values(nodesMap);
         }
 
         function allEdges() {
