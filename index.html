@@ -789,8 +789,8 @@
         // Graph nodes list — fixed + custom (from localStorage)
         const FIXED_NODES = [
             { id: "Media", label: "MEDIA", fixed: true, color: "transparent", isContainer: true, baseSize: 52 },
-            { id: "Media:Legacy", label: "Legacy", fixed: true, color: "#1f6feb", baseSize: 32, subnodeOf: "Media", xOffset: -30, yOffset: 6 },
-            { id: "Media:Social", label: "Social", fixed: true, color: "#1f6feb", baseSize: 32, subnodeOf: "Media", xOffset: 30, yOffset: 6 },
+            { id: "Media:Legacy", label: "Legacy", fixed: true, color: "#1f6feb", baseSize: 32, subnodeOf: "Media", xOffset: 0, yOffset: -26 },
+            { id: "Media:Social", label: "Social", fixed: true, color: "#1f6feb", baseSize: 32, subnodeOf: "Media", xOffset: 0, yOffset: 38 },
             { id: "People", label: "People", fixed: true, color: "#1f6feb", baseSize: 32 },
             { id: "Government", label: "Government", fixed: true, color: "#1f6feb", baseSize: 32 }
         ];
@@ -1072,8 +1072,8 @@
             // Shift the perceived start/end centers perpendicularly based on curvature.
             // This forces curved edges bounding for the same target to physically land 
             // at different distinct points around its circumference, preventing overlaps!
-            const perpX = -dy / len * (curvature * 0.25);
-            const perpY = dx / len * (curvature * 0.25);
+            const perpX = -dy / len * (curvature * 0.7);
+            const perpY = dx / len * (curvature * 0.7);
 
             const sxCenter = s.x + perpX;
             const syCenter = s.y + perpY;
@@ -1081,26 +1081,26 @@
             const tyCenter = t.y + perpY;
 
             if (curvature === 0) {
-                const sx = sxCenter + dx / len * sr;
-                const sy = syCenter + dy / len * sr;
+                const sx = s.x + dx / len * sr;
+                const sy = s.y + dy / len * sr;
                 const ex = txCenter - dx / len * (tr + 2 + arrowLen);
                 const ey = tyCenter - dy / len * (tr + 2 + arrowLen);
                 return `M${sx},${sy} L${ex},${ey}`;
             }
 
             // Curved arc: use tangent control points for precise boundary connections
-            const mx = (sxCenter + txCenter) / 2;
-            const my = (syCenter + tyCenter) / 2;
+            const mx = (s.x + txCenter) / 2;
+            const my = (s.y + tyCenter) / 2;
             const nx = -dy / len * curvature;
             const ny = dx / len * curvature;
             const cx = mx + nx;
             const cy = my + ny;
 
             // Start vector directly toward control point
-            const dsx = cx - sxCenter, dsy = cy - syCenter;
+            const dsx = cx - s.x, dsy = cy - s.y;
             const slen = Math.sqrt(dsx * dsx + dsy * dsy) || 1;
-            const sx = sxCenter + dsx / slen * sr;
-            const sy = syCenter + dsy / slen * sr;
+            const sx = s.x + dsx / slen * sr;
+            const sy = s.y + dsy / slen * sr;
 
             // End vector directly from control point targeting end
             const dtx = txCenter - cx, dty = tyCenter - cy;
@@ -1289,11 +1289,11 @@
                         let spread = 40;
                         base = 35 + (total > 1 ? (idx * (spread / (total - 1))) : 0);
                     } else if (total > 1) {
-                        // Bundle is unidirectional but thick. Bow outward (positive) as a cohesive unit.
-                        let spread = 50;
-                        base = 25 + (idx * (spread / (total - 1)));
+                        // Bundle is unidirectional but thick. Spread symmetrically around the axis.
+                        let spread = 140; // Widened from 80
+                        base = -spread / 2 + (idx * (spread / (total - 1)));
                     } else {
-                        // Single edge unidirectional. Maintain natural subnode offset bow, but clamp slightly positive.
+                        // Single edge unidirectional. Maintain natural subnode offset bow.
                         let bow = 0;
                         const s = nodeMap[e.source];
                         const t = nodeMap[e.target];
@@ -1306,14 +1306,16 @@
 
                             if (sNode && sNode.subnodeOf) {
                                 const dot = (sNode.xOffset || 0) * nx + (sNode.yOffset || 0) * ny;
-                                bow += dot * 1.5;
+                                bow += dot * 2.5; // Amplified from 1.5
                             }
                             if (tNode && tNode.subnodeOf) {
                                 const dot = (tNode.xOffset || 0) * nx + (tNode.yOffset || 0) * ny;
-                                bow += dot * 1.5;
+                                bow += dot * 2.5; // Amplified from 1.5
                             }
                         }
-                        base = Math.max(12, bow); // Force it to stay mildly positive to visually indicate flow consistency
+                        // If no subnode offset, give a tiny default bow to avoid visual overlaps with nodes on the line
+                        if (Math.abs(bow) < 12) bow = (bow < 0 ? -12 : 12);
+                        base = bow;
                     }
                 }
                 return base;
@@ -1360,39 +1362,8 @@
 
             edgeSel.exit().remove();
 
-            // ── EDGE LABELS (pathway + paper count)
-            const labelSel = labelLayer.selectAll("text.edge-label")
-                .data(edges, d => edgeKey(d.source, d.target, d.pathway));
-
-            labelSel.enter().append("text")
-                .attr("class", "edge-label")
-                .merge(labelSel)
-                .each(function (d) {
-                    const mid = edgeMidpoint(d, nodeMap, d._curvature);
-
-                    const s = nodeMap[d.source];
-                    const t = nodeMap[d.target];
-                    if (!s || !t) return;
-                    const dx = t.x - s.x, dy = t.y - s.y;
-
-                    let angle = Math.atan2(dy, dx) * 180 / Math.PI;
-                    if (angle > 90 || angle < -90) { // Keep text readable
-                        angle += 180;
-                    }
-
-                    const n = papersForEdge(d.source, d.target, d.pathway).length;
-                    const labelText = d.pathway ? `${d.pathway} (${n})` : (n > 0 ? `${n} paper${n !== 1 ? "s" : ""}` : "");
-
-                    d3.select(this)
-                        .attr("x", mid.x)
-                        .attr("y", mid.y)
-                        .attr("transform", `rotate(${angle}, ${mid.x}, ${mid.y}) translate(0, -6)`)
-                        .style("text-anchor", "middle")
-                        .attr("fill", getEdgeColor(d.pathway))
-                        .text(labelText);
-                });
-
-            labelSel.exit().remove();
+            // ── EDGE LABELS (Removed at user request, now hover only)
+            labelLayer.selectAll("text.edge-label").remove();
 
             // ── NODES
             const nodeSel = nodeLayer.selectAll("g.node-g")
@@ -1441,8 +1412,8 @@
                 .each(function (d) {
                     const txt = d3.select(this);
                     if (d.isContainer) {
-                        txt.attr("x", -60)
-                            .attr("y", -30)
+                        txt.attr("x", -35)
+                            .attr("y", -62)
                             .style("text-anchor", "start")
                             .style("font-size", "13px")
                             .style("font-weight", "700")
@@ -1472,8 +1443,8 @@
                 .each(function (d) {
                     const shape = d3.select(this);
                     if (d.isContainer) {
-                        const width = 120;
-                        const height = 66;
+                        const width = 70;
+                        const height = 130;
                         shape.attr("width", width).attr("height", height)
                             .attr("x", -width / 2).attr("y", -height / 2 + 6)
                             .attr("rx", 10);
