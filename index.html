@@ -805,7 +805,7 @@
         let customNodes = JSON.parse(localStorage.getItem("customNodes") || "[]");
         let customEdges = JSON.parse(localStorage.getItem("customEdges") || "[]");
         let nodePositions = JSON.parse(localStorage.getItem("nodePositions") || "{}");
-        let hideDefaultEdges = localStorage.getItem("hideDefaultEdges") === "true";
+        let hideEmptyEdges = localStorage.getItem("hideEmptyEdges") === "true";
 
         let currentUser = localStorage.getItem("selectedUser") || "";
         let addEdgeMode = false;
@@ -871,26 +871,38 @@
 
         function allEdges() {
             const edgeMap = {};
-            // Default edges (can be cleared by user if no papers are attached)
-            if (!hideDefaultEdges) {
-                DEFAULT_EDGES.forEach(e => {
-                    const k = edgeKey(e.source, e.target, e.pathway);
-                    edgeMap[k] = { source: e.source, target: e.target, pathway: e.pathway || "" };
-                });
-            }
-            // Edges implied by papers
+            // 1. Default structural edges
+            DEFAULT_EDGES.forEach(e => {
+                const k = edgeKey(e.source, e.target, e.pathway);
+                edgeMap[k] = { source: e.source, target: e.target, pathway: e.pathway || "" };
+            });
+
+            // 2. Edges implied by actual papers
             papers.forEach(p => {
                 if (p.startNode && p.endNode) {
                     const k = edgeKey(p.startNode, p.endNode, p.pathway);
                     edgeMap[k] = { source: p.startNode, target: p.endNode, pathway: p.pathway || "" };
                 }
             });
-            // Custom edges
+
+            // 3. User-added custom edges
             customEdges.forEach(e => {
                 const k = edgeKey(e.source, e.target, e.pathway);
                 edgeMap[k] = { source: e.source, target: e.target, pathway: e.pathway || "" };
             });
-            return Object.values(edgeMap);
+
+            const result = Object.values(edgeMap);
+
+            // If "Hide Empty" mode is on, filter out everything with 0 papers
+            if (hideEmptyEdges) {
+                return result.filter(e => {
+                    // Always show the edge if it has papers
+                    if (papersForEdge(e.source, e.target, e.pathway).length > 0) return true;
+                    return false;
+                });
+            }
+
+            return result;
         }
 
         function nameForEmail(email) {
@@ -1880,60 +1892,42 @@
                 .attr("stroke-width", 2.5);
         }
 
-        // ── RESET CUSTOM NODES
+        // ── RESET CUSTOM NODES / CLEAN GRAPH
         document.getElementById("reset-graph-btn").addEventListener("click", () => {
-            if (!confirm("Remove unused custom nodes and edges? Anything with a paper attached will be kept.")) return;
+            if (!confirm("Clean Graph? This will hide all empty edges and remove custom nodes that don't have papers yet.")) return;
 
-            // Collect all node IDs and edge keys that have at least one paper in the sheet
             const paperNodeIds = new Set();
-            const paperEdgeKeys = new Set();
             papers.forEach(p => {
                 if (p.startNode) paperNodeIds.add(p.startNode);
                 if (p.endNode) paperNodeIds.add(p.endNode);
-                if (p.startNode && p.endNode) paperEdgeKeys.add(edgeKey(p.startNode, p.endNode));
             });
 
-            // Fixed node IDs (always kept regardless)
-            const fixedIds = new Set(FIXED_NODES.map(n => n.id));
-
-            // Keep custom nodes that have papers; remove ones that don't
+            // Remove unused custom nodes from storage
             const removedNodeIds = new Set();
             customNodes = customNodes.filter(n => {
-                if (paperNodeIds.has(n.id)) return true; // has a paper → keep
+                if (paperNodeIds.has(n.id)) return true;
                 removedNodeIds.add(n.id);
                 return false;
             });
 
-            // Keep custom edges that have papers; remove ones that don't
-            customEdges = customEdges.filter(e => {
-                return paperEdgeKeys.has(edgeKey(e.source, e.target));
-            });
+            // Enable Hide Empty Edges mode
+            hideEmptyEdges = true;
+            localStorage.setItem("hideEmptyEdges", "true");
 
-            // Also hide the unpopulated default structure edges
-            hideDefaultEdges = true;
-            localStorage.setItem("hideDefaultEdges", "true");
-
-            // Remove positions only for nodes actually being deleted
+            // Purge unused positions
             removedNodeIds.forEach(id => delete nodePositions[id]);
 
             // Persist
             localStorage.setItem("customNodes", JSON.stringify(customNodes));
-            localStorage.setItem("customEdges", JSON.stringify(customEdges));
             localStorage.setItem("nodePositions", JSON.stringify(nodePositions));
 
-            // Re-render
+            // Reload visual
             nodeLayer.selectAll("*").remove();
             edgeLayer.selectAll("*").remove();
             labelLayer.selectAll("*").remove();
             renderGraph();
 
-            const kept = paperNodeIds.size - fixedIds.size > 0
-                ? ` (${[...paperNodeIds].filter(id => !fixedIds.has(id)).length} node(s) with papers kept)`
-                : "";
-            const removed = removedNodeIds.size;
-            showStatus(removed > 0
-                ? `Removed ${removed} unused node(s)${kept} ✓`
-                : `Nothing to remove — all custom nodes have papers attached`);
+            showStatus(`Graph cleaned: Hidden empty edges and removed ${removedNodeIds.size} unused custom node(s) ✓`);
         });
 
         function closePanels() {
