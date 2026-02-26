@@ -593,8 +593,9 @@
     <div id="toolbar">
         <button class="btn primary" id="add-node-btn">＋ Node</button>
         <button class="btn" id="add-edge-btn">＋ Edge</button>
-        <button class="btn danger" id="reset-graph-btn" title="Remove all custom nodes and edges">&#x2715; Reset Custom
-            Nodes</button>
+        <button class="btn danger" id="reset-graph-btn" title="Remove all custom nodes and edges">&#x2715; Reset custom
+            nodes</button>
+        <button class="btn" id="purge-edges-btn" title="Remove custom edges with 0 papers">🧹 Purge empty edges</button>
     </div>
 
     <!-- ── USER BAR ────────────────────────────── -->
@@ -893,16 +894,22 @@
 
             const result = Object.values(edgeMap);
 
-            // If "Hide Empty" mode is on, filter out everything with 0 papers
-            if (hideEmptyEdges) {
-                return result.filter(e => {
-                    // Always show the edge if it has papers
-                    if (papersForEdge(e.source, e.target, e.pathway).length > 0) return true;
-                    return false;
-                });
-            }
+            if (!hideEmptyEdges) return result;
 
-            return result;
+            return result.filter(e => {
+                // 1. Show if it has papers
+                if (papersForEdge(e.source, e.target, e.pathway).length > 0) return true;
+
+                // 2. Show if it's a default structural edge
+                const isDefault = DEFAULT_EDGES.some(de => de.source === e.source && de.target === e.target);
+                if (isDefault) return true;
+
+                // 3. Show if it's a custom edge (user just added it)
+                const isCustom = customEdges.some(ce => ce.source === e.source && ce.target === e.target);
+                if (isCustom) return true;
+
+                return false;
+            });
         }
 
         function nameForEmail(email) {
@@ -1840,6 +1847,14 @@
         document.getElementById("add-edge-btn").addEventListener("click", () => {
             if (addEdgeMode) { cancelEdgeMode(); return; }
             closePanels();
+
+            // Disable "Hide Empty" mode so we can see the edge being added
+            if (hideEmptyEdges) {
+                hideEmptyEdges = false;
+                localStorage.setItem("hideEmptyEdges", "false");
+                renderGraph();
+            }
+
             addEdgeMode = true;
             edgeSourceId = null;
             document.getElementById("add-edge-btn").classList.add("active");
@@ -1899,6 +1914,20 @@
             renderGraph();
 
             showStatus(`Graph cleaned: Hidden empty edges and removed ${removedNodeIds.size} unused custom node(s) ✓`);
+        });
+
+        // ── PURGE EMPTY EDGES
+        document.getElementById("purge-edges-btn").addEventListener("click", () => {
+            const before = customEdges.length;
+            customEdges = customEdges.filter(e => {
+                const n = papersForEdge(e.source, e.target, e.pathway).length;
+                return n > 0;
+            });
+            const after = customEdges.length;
+            localStorage.setItem("customEdges", JSON.stringify(customEdges));
+
+            showStatus(`Purged ${before - after} empty edges`);
+            renderGraph();
         });
 
         function closePanels() {
