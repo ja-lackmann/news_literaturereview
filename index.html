@@ -1101,13 +1101,36 @@
 
         function edgeMidpoint(d, nodeMap, curvature = 0) {
             const s = nodeMap[d.source];
-            const t = nodeMap[d.target];
-            if (!s || !t) return { x: 0, y: 0 };
-            if (curvature === 0) return { x: (s.x + t.x) / 2, y: (s.y + t.y) / 2 };
-            const dx = t.x - s.x, dy = t.y - s.y;
+            const tp = nodeMap[d.target];
+            if (!s || !tp) return { x: 0, y: 0 };
+
+            // To prevent label overlapping entirely on closely packed long lines, we stagger t
+            // based on the edge's total count in the group.
+            let t = 0.5;
+            if (d._groupDirTotal > 1) {
+                // Stagger from 0.35 to 0.65 based on index
+                const step = 0.3 / (d._groupDirTotal - 1);
+                t = 0.35 + d._groupDirIdx * step;
+            }
+
+            if (curvature === 0) {
+                return { x: s.x + (tp.x - s.x) * t, y: s.y + (tp.y - s.y) * t };
+            }
+
+            const dx = tp.x - s.x;
+            const dy = tp.y - s.y;
             const len = Math.sqrt(dx * dx + dy * dy) || 1;
-            const mx = (s.x + t.x) / 2, my = (s.y + t.y) / 2;
-            return { x: mx - dy / len * curvature * 0.5, y: my + dx / len * curvature * 0.5 };
+
+            const mx = (s.x + tp.x) / 2;
+            const my = (s.y + tp.y) / 2;
+            const cx = mx - (dy / len) * curvature;
+            const cy = my + (dx / len) * curvature;
+
+            // Bezier curve formula B(t) = (1-t)^2 P0 + 2(1-t)t P1 + t^2 P2
+            const u = 1 - t;
+            const x = u * u * s.x + 2 * u * t * cx + t * t * tp.x;
+            const y = u * u * s.y + 2 * u * t * cy + t * t * tp.y;
+            return { x, y };
         }
 
         function renderGraph() {
@@ -1165,59 +1188,121 @@
             // Figure out which edges are "reverse pairs" and need curvature
             const edgeSet = new Set(edges.map(e => edgeKey(e.source, e.target, e.pathway)));
 
-            // Group edges by exact pair to fan out multiple pathways between the SAME exact nodes
-            const pairCounts = {};
+            // Group edges by parent-pair
+            const dirGroupEdges = {};
+            const undirGroupCounts = {};
+
             edges.forEach(e => {
-                const k = [e.source, e.target].sort().join("<>");
-                pairCounts[k] = (pairCounts[k] || 0) + 1;
+                const sNode = nodes.find(n => n.id === e.source);
+                const tNode = nodes.find(n => n.id === e.target);
+                const sParent = (sNode && sNode.subnodeOf) ? sNode.subnodeOf : e.source;
+                const tParent = (tNode && tNode.subnodeOf) ? tNode.subnodeOf : e.target;
+
+                const dirKey = `${sParent}->${tParent}`;
+                if (!dirGroupEdges[dirKey]) dirGroupEdges[dirKey] = [];
+                dirGroupEdges[dirKey].push(e);
+
+                const undirKey = [sParent, tParent].sort().join("<>");
+                if (!undirGroupCounts[undirKey]) undirGroupCounts[undirKey] = new Set();
+                undirGroupCounts[undirKey].add(dirKey);
             });
-            const pairIndex = {};
+
+            for (const k in dirGroupEdges) {
+                const arr = dirGroupEdges[k];
+                if (arr.length === 0) continue;
+
+                // Get general direction of this group using the first edge
+                const firstEdge = arr[0];
+                const pseudoSNode = nodeMap[firstEdge.source] || { x: 0, y: 0 };
+                const pseudoTNode = nodeMap[firstEdge.target] || { x: 0, y: 0 };
+                const dx = pseudoTNode.x - pseudoSNode.x;
+                const dy = pseudoTNode.y - pseudoSNode.y;
+
+                // Sort by geometric position normal to the path so lines don't tangle
+                arr.sort((a, b) => {
+                    const aS = nodes.find(n => n.id === a.source);
+                    const bS = nodes.find(n => n.id === b.source);
+                    const aT = nodes.find(n => n.id === a.target);
+                    const bT = nodes.find(n => n.id === b.target);
+
+                    const aSX = (aS && aS.xOffset) ? aS.xOffset : 0;
+                    const aSY = (aS && aS.yOffset) ? aS.yOffset : 0;
+                    const bSX = (bS && bS.xOffset) ? bS.xOffset : 0;
+                    const bSY = (bS && bS.yOffset) ? bS.yOffset : 0;
+
+                    const aTX = (aT && aT.xOffset) ? aT.xOffset : 0;
+                    const aTY = (aT && aT.yOffset) ? aT.yOffset : 0;
+                    const bTX = (bT && bT.xOffset) ? bT.xOffset : 0;
+                    const bTY = (bT && bT.yOffset) ? bT.yOffset : 0;
+
+                    const aX = aSX + aTX, aY = aSY + aTY;
+                    const bX = bSX + bTX, bY = bSY + bTY;
+
+                    const aDot = aX * (-dy) + aY * dx;
+                    const bDot = bX * (-dy) + bY * dx;
+                    return aDot - bDot;
+                });
+
+                arr.forEach((e, i) => {
+                    e._groupDirIdx = i;
+                    e._groupDirTotal = arr.length;
+                    const sNode = nodes.find(n => n.id === e.source);
+                    const tNode = nodes.find(n => n.id === e.target);
+                    const sParent = (sNode && sNode.subnodeOf) ? sNode.subnodeOf : e.source;
+                    const tParent = (tNode && tNode.subnodeOf) ? tNode.subnodeOf : e.target;
+                    const undirKey = [sParent, tParent].sort().join("<>");
+                    e._isGroupBidirectional = undirGroupCounts[undirKey] && undirGroupCounts[undirKey].size > 1;
+                });
+            }
 
             function getCurvature(e) {
-                const k = [e.source, e.target].sort().join("<>");
-                const total = pairCounts[k];
-                const idx = pairIndex[k] || 0;
-                pairIndex[k] = idx + 1;
+                const total = e._groupDirTotal || 1;
+                const idx = e._groupDirIdx || 0;
 
                 const sNode = nodes.find(n => n.id === e.source);
                 const tNode = nodes.find(n => n.id === e.target);
+                const sParent = (sNode && sNode.subnodeOf) ? sNode.subnodeOf : e.source;
+                const tParent = (tNode && tNode.subnodeOf) ? tNode.subnodeOf : e.target;
+                const sameParent = (sParent === tParent);
 
-                // Base curvature logic for bidirectional
-                const isBidirectional = edgeSet.has(edgeKey(e.target, e.source, e.pathway));
-                const sameParent = (sNode && tNode && sNode.subnodeOf && sNode.subnodeOf === tNode.subnodeOf);
-
-                let base = isBidirectional ? 40 : 0;
+                let base = 0;
 
                 if (sameParent) {
                     base = -80; // Powerful outward arc over the top bounding boxes
                 } else {
-                    // Naturally fan out subnodes connecting to external nodes based on their physical offset
-                    // This prevents Legacy->People and Social->People from overlapping
-                    let bow = 0;
-                    const s = nodeMap[e.source];
-                    const t = nodeMap[e.target];
-                    if (s && t) {
-                        const dx = t.x - s.x;
-                        const dy = t.y - s.y;
-                        const len = Math.sqrt(dx * dx + dy * dy) || 1;
-                        const nx = -dy / len;
-                        const ny = dx / len; // Normal vector
+                    // Start by forcing paths to arc cleanly to the "right" of their travel direction.
+                    // This elegantly separates A->B and B->A logic instantly forming roundabout highway cycles.
+                    if (e._isGroupBidirectional) {
+                        // Separate strongly. Spread them from +35 to +75 (if grouped)
+                        let spread = 40;
+                        base = 35 + (total > 1 ? (idx * (spread / (total - 1))) : 0);
+                    } else if (total > 1) {
+                        // Bundle is unidirectional but thick. Bow outward (positive) as a cohesive unit.
+                        let spread = 50;
+                        base = 25 + (idx * (spread / (total - 1)));
+                    } else {
+                        // Single edge unidirectional. Maintain natural subnode offset bow, but clamp slightly positive.
+                        let bow = 0;
+                        const s = nodeMap[e.source];
+                        const t = nodeMap[e.target];
+                        if (s && t) {
+                            const dx = t.x - s.x;
+                            const dy = t.y - s.y;
+                            const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                            const nx = -dy / len;
+                            const ny = dx / len;
 
-                        if (sNode && sNode.subnodeOf) {
-                            const dot = (sNode.xOffset || 0) * nx + (sNode.yOffset || 0) * ny;
-                            bow += dot * 1.5;
+                            if (sNode && sNode.subnodeOf) {
+                                const dot = (sNode.xOffset || 0) * nx + (sNode.yOffset || 0) * ny;
+                                bow += dot * 1.5;
+                            }
+                            if (tNode && tNode.subnodeOf) {
+                                const dot = (tNode.xOffset || 0) * nx + (tNode.yOffset || 0) * ny;
+                                bow += dot * 1.5;
+                            }
                         }
-                        if (tNode && tNode.subnodeOf) {
-                            const dot = (tNode.xOffset || 0) * nx + (tNode.yOffset || 0) * ny;
-                            bow += dot * 1.5;
-                        }
+                        base = Math.max(12, bow); // Force it to stay mildly positive to visually indicate flow consistency
                     }
-                    base += bow;
-                }
-
-                // If multiple pathways exist for the EXACT same pair, spread them out further
-                if (total > 1) {
-                    base += (idx - (total - 1) / 2) * 45; // Wide spread
                 }
                 return base;
             }
@@ -1672,9 +1757,21 @@
                     driveId: res.driveFileId  // Internal ID for linking
                 });
 
+                // Update the edge's pathway if it was previously empty
+                if (!activeEdge.pathway && pathway) {
+                    activeEdge.pathway = pathway;
+                    // Find it in customEdges and update so the graph gets the color
+                    const cIdx = customEdges.findIndex(e => e.source === activeEdge.source && e.target === activeEdge.target && !e.pathway);
+                    if (cIdx !== -1) {
+                        customEdges[cIdx].pathway = pathway;
+                        saveLocal();
+                    }
+                }
+
                 renderPaperList(activeEdge.source, activeEdge.target, activeEdge.pathway);
                 document.getElementById("modal-edge-subtitle").textContent =
                     `${papersForEdge(activeEdge.source, activeEdge.target, activeEdge.pathway).length} paper(s) collected`;
+                populatePathwayDropdown(); // Refresh dropdown in case "NEW" was added
 
                 // Reset form
                 document.getElementById("paper-author").value = "";
